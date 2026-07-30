@@ -1,0 +1,62 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Python virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Package managers & test/lint caches
+.uv/
+.cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Distribution & build outputs
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Machine Learning model weights & runs (Ultralytics YOLO / PyTorch / ONNX / TensorRT)
+*.pt
+*.pth
+*.onnx
+*.engine
+*.tflite
+*.weights
+runs/
+
+# Video files & media outputs
+output.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+
+# IDEs & Editor configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
