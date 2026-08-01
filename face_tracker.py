@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 """
-Real-Time Face Tracker
-======================
-A high-performance live face tracking application using OpenCV & YuNet deep neural network.
+Real-Time Face Tracker with Roboflow Supervision
+================================================
+A high-performance live face tracking application using Roboflow Supervision (sv.Detections & sv.ByteTrack),
+OpenCV YuNet deep neural network, and customizable HUD themes.
 
 Features:
 - Live camera stream with auto camera selection
-- Real-time face detection & 5-point facial landmark tracking
-- Smooth bounding box tracking (jitter reduction)
-- Cyberpunk / Sci-Fi HUD visual themes
-- Interactive privacy face blurring mode
+- Face detection using YuNet ONNX / Haar Cascade / optional Ultralytics YOLO
+- Roboflow Supervision integration (sv.Detections, sv.ByteTrack multi-object tracking)
+- Supervision Annotators (sv.CornerAnnotator, sv.LabelAnnotator, sv.BlurAnnotator, sv.DotAnnotator)
+- 5-point facial landmark tracking with vector display
+- Cyberpunk / Sci-Fi HUD visual themes (BGR format)
+- Interactive privacy face blurring mode (using sv.BlurAnnotator)
 - Instant screenshot snapshots saved to 'snapshots/'
-- Real-time FPS, face counter, and distance/scale estimation
+- Real-time FPS, face counter, persistent tracking IDs, and distance/scale estimation
 - Customizable via hotkeys and CLI arguments
 
 Controls:
   'q' or ESC : Quit application
-  'b'        : Toggle Face Blur (Privacy Mode)
+  'b'        : Toggle Privacy Face Blur (Supervision BlurAnnotator)
   'l'        : Toggle Facial Landmark Vectors
-  'c'        : Cycle Visual Theme (Neon Cyan, Emerald Green, Amber, Clean White)
+  'c'        : Cycle Visual Theme
+  't'        : Toggle Roboflow Supervision Annotators / Custom Reticles
   's'        : Save Snapshot to disk
   'h'        : Toggle HUD / On-screen guide
 """
@@ -29,6 +33,7 @@ import argparse
 import urllib.request
 import cv2
 import numpy as np
+import supervision as sv
 
 # Model URLs and file paths
 YUNET_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
@@ -115,51 +120,18 @@ THEME_NAMES = list(THEMES.keys())
 def ensure_models_exist():
     """Download required AI weights/cascade models if not present locally."""
     if not os.path.exists(YUNET_PATH):
-        print(f"[*] Downloading YuNet Face Detector model weights...")
+        print("[*] Downloading YuNet Face Detector model weights...")
         try:
             urllib.request.urlretrieve(YUNET_URL, YUNET_PATH)
             print(f"[+] Downloaded {YUNET_PATH} successfully!")
         except Exception as e:
-            print(f"[!] Warning: Failed to download YuNet model ({
-                  e}). Will attempt Haar fallback.")
+            print(f"[!] Warning: Failed to download YuNet model ({e}). Will attempt Haar fallback.")
 
     if not os.path.exists(HAAR_PATH):
         try:
             urllib.request.urlretrieve(HAAR_URL, HAAR_PATH)
         except Exception:
             pass
-
-
-class SmoothTracker:
-    """Smoothes bounding boxes across frames to eliminate jitter."""
-
-    def __init__(self, alpha=0.35):
-        self.alpha = alpha
-        self.tracked_faces = {}  # face_id -> [x, y, w, h]
-
-    def update(self, detected_boxes):
-        """Updates and returns smoothed boxes."""
-        smoothed = []
-        for i, box in enumerate(detected_boxes):
-            x, y, w, h = box
-            if i in self.tracked_faces:
-                prev_x, prev_y, prev_w, prev_h = self.tracked_faces[i]
-                curr_x = int(self.alpha * x + (1 - self.alpha) * prev_x)
-                curr_y = int(self.alpha * y + (1 - self.alpha) * prev_y)
-                curr_w = int(self.alpha * w + (1 - self.alpha) * prev_w)
-                curr_h = int(self.alpha * h + (1 - self.alpha) * prev_h)
-                self.tracked_faces[i] = [curr_x, curr_y, curr_w, curr_h]
-            else:
-                self.tracked_faces[i] = [x, y, w, h]
-            smoothed.append(self.tracked_faces[i])
-
-        # Clean up stale IDs
-        stale_ids = [fid for fid in self.tracked_faces if fid >=
-                     len(detected_boxes)]
-        for fid in stale_ids:
-            del self.tracked_faces[fid]
-
-        return smoothed
 
 
 class FaceTrackerApp:
@@ -173,6 +145,7 @@ class FaceTrackerApp:
         self.blur_faces = False
         self.show_landmarks = True
         self.show_hud = True
+        self.use_supervision_annotators = True
         self.theme_idx = 0
 
         # FPS calculation
@@ -189,8 +162,9 @@ class FaceTrackerApp:
         self.haar_cascade = None
         self._init_detector()
 
-        # Smooth Tracker
-        self.smooth_tracker = SmoothTracker(alpha=0.4)
+        # Roboflow Supervision Tracker (ByteTrack)
+        self.tracker = sv.ByteTrack(track_activation_threshold=0.25, lost_track_buffer=30, minimum_matching_threshold=0.8)
+        self.blur_annotator = sv.BlurAnnotator(kernel_size=31)
 
     def _init_detector(self):
         """Initialize YuNet ONNX detector or Haar Cascade fallback."""
@@ -220,8 +194,7 @@ class FaceTrackerApp:
         """Find and open working webcam device."""
         cap = cv2.VideoCapture(self.camera_id)
         if not cap.isOpened():
-            print(f"[!] Primary camera index {
-                  self.camera_id} failed. Searching for available cameras...")
+            print(f"[!] Primary camera index {self.camera_id} failed. Searching for available cameras...")
             for alt_id in range(4):
                 if alt_id == self.camera_id:
                     continue
@@ -232,35 +205,13 @@ class FaceTrackerApp:
                     break
 
         if not cap.isOpened():
-            print(
-                "[ERROR] Could not access any webcam. Please check camera permissions or connection.")
+            print("[ERROR] Could not access any webcam. Please check camera permissions or connection.")
             return None
 
         # Request resolution
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.target_width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.target_height)
         return cap
-
-    def draw_corner_rect(self, img, pt1, pt2, color, thickness=2, line_len=20):
-        """Draw futuristic corner-bracket target box around face."""
-        x1, y1 = pt1
-        x2, y2 = pt2
-
-        # Top-Left
-        cv2.line(img, (x1, y1), (x1 + line_len, y1), color, thickness)
-        cv2.line(img, (x1, y1), (x1, y1 + line_len), color, thickness)
-
-        # Top-Right
-        cv2.line(img, (x2, y1), (x2 - line_len, y1), color, thickness)
-        cv2.line(img, (x2, y1), (x2, y1 + line_len), color, thickness)
-
-        # Bottom-Left
-        cv2.line(img, (x1, y2), (x1 + line_len, y2), color, thickness)
-        cv2.line(img, (x1, y2), (x1, y2 - line_len), color, thickness)
-
-        # Bottom-Right
-        cv2.line(img, (x2, y2), (x2 - line_len, y2), color, thickness)
-        cv2.line(img, (x2, y2), (x2, y2 - line_len), color, thickness)
 
     def draw_hud_header(self, frame, face_count):
         """Render stylish HUD top-bar stats and control guide."""
@@ -273,20 +224,20 @@ class FaceTrackerApp:
         cv2.addWeighted(overlay, 0.65, frame, 0.35, 0, frame)
 
         # Header Title & Stats
-        title = "LIVE FACE TRACKER"
+        title = "ROBOFLOW SUPERVISION FACE TRACKER"
         cv2.putText(frame, title, (20, 28), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7, theme["primary"], 2, cv2.LINE_AA)
+                    0.65, theme["primary"], 2, cv2.LINE_AA)
 
         # Status Badges
         fps_str = f"FPS: {self.fps:.1f}"
         faces_str = f"TRACKED: {face_count}"
         theme_str = f"THEME: {THEME_NAMES[self.theme_idx]}"
 
-        cv2.putText(frame, fps_str, (260, 28), cv2.FONT_HERSHEY_SIMPLEX,
+        cv2.putText(frame, fps_str, (430, 28), cv2.FONT_HERSHEY_SIMPLEX,
                     0.55, theme["accent"], 1, cv2.LINE_AA)
-        cv2.putText(frame, faces_str, (370, 28), cv2.FONT_HERSHEY_SIMPLEX,
+        cv2.putText(frame, faces_str, (540, 28), cv2.FONT_HERSHEY_SIMPLEX,
                     0.55, theme["secondary"], 1, cv2.LINE_AA)
-        cv2.putText(frame, theme_str, (510, 28),
+        cv2.putText(frame, theme_str, (680, 28),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, theme["text"], 1, cv2.LINE_AA)
 
         if self.blur_faces:
@@ -299,132 +250,142 @@ class FaceTrackerApp:
             cv2.rectangle(footer, (0, h - 30), (w, h), (15, 15, 15), -1)
             cv2.addWeighted(footer, 0.65, frame, 0.35, 0, frame)
 
-            guide = "[Q] Quit  |  [B] Blur Face  |  [L] Landmarks  |  [C] Theme  |  [S] Snapshot  |  [H] Toggle HUD"
+            guide = "[Q] Quit  |  [B] Blur Face (SV)  |  [L] Landmarks  |  [C] Theme  |  [T] Toggle Annotator  |  [S] Snapshot"
             cv2.putText(frame, guide, (20, h - 10), cv2.FONT_HERSHEY_SIMPLEX,
                         0.45, (200, 200, 200), 1, cv2.LINE_AA)
 
-    def process_frame(self, frame):
-        """Detect faces, update tracker, and render graphics."""
+    def detect_faces(self, frame):
+        """Detect faces and return Roboflow Supervision sv.Detections object."""
         h, w = frame.shape[:2]
-        theme = THEMES[THEME_NAMES[self.theme_idx]]
-
-        faces = []
+        xyxy_boxes = []
+        confidences = []
         landmarks_list = []
 
-        # 1. Detect Faces
         if self.yunet_detector:
             self.yunet_detector.setInputSize((w, h))
-            _, detections = self.yunet_detector.detect(frame)
-            if detections is not None:
-                for det in detections:
-                    box = list(map(int, det[0:4]))
+            _, detections_raw = self.yunet_detector.detect(frame)
+            if detections_raw is not None:
+                for det in detections_raw:
+                    x, y, bw, bh = det[0:4]
                     score = float(det[-1])
-                    # Landmarks: right eye, left eye, nose tip, right mouth corner, left mouth corner
-                    landmarks = list(map(int, det[4:14]))
-                    faces.append((box, score))
-                    landmarks_list.append(landmarks)
+                    lm = list(map(int, det[4:14]))
+
+                    xyxy_boxes.append([x, y, x + bw, y + bh])
+                    confidences.append(score)
+                    landmarks_list.append(lm)
         elif self.haar_cascade:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             detected = self.haar_cascade.detectMultiScale(
                 gray, scaleFactor=1.1, minNeighbors=5, minSize=(60, 60))
             for (x, y, bw, bh) in detected:
-                faces.append(([x, y, bw, bh], 0.95))
+                xyxy_boxes.append([x, y, x + bw, y + bh])
+                confidences.append(0.95)
                 landmarks_list.append(None)
 
-        # 2. Smooth Bounding Boxes
-        raw_boxes = [f[0] for f in faces]
-        smoothed_boxes = self.smooth_tracker.update(raw_boxes)
+        if len(xyxy_boxes) == 0:
+            sv_detections = sv.Detections.empty()
+            sv_detections.data["landmarks"] = np.array([])
+            return sv_detections
 
-        # 3. Process Each Tracked Face
-        for i, box in enumerate(smoothed_boxes):
-            x, y, bw, bh = box
-            # Boundary check
-            x, y = max(0, x), max(0, y)
-            bw, bh = min(w - x, bw), min(h - y, bh)
+        xyxy_arr = np.array(xyxy_boxes, dtype=np.float32)
+        conf_arr = np.array(confidences, dtype=np.float32)
+        class_ids = np.zeros(len(xyxy_boxes), dtype=int)
 
-            if bw <= 0 or bh <= 0:
-                continue
+        sv_detections = sv.Detections(
+            xyxy=xyxy_arr,
+            confidence=conf_arr,
+            class_id=class_ids
+        )
+        sv_detections.data["landmarks"] = np.array(landmarks_list, dtype=object)
+        return sv_detections
 
-            score = faces[i][1] if i < len(faces) else 0.9
+    def process_frame(self, frame):
+        """Detect faces, update Roboflow Supervision ByteTrack, and annotate frame."""
+        h, w = frame.shape[:2]
+        theme = THEMES[THEME_NAMES[self.theme_idx]]
+        primary_color = sv.Color(r=theme["primary"][2], g=theme["primary"][1], b=theme["primary"][0])
+        secondary_color = sv.Color(r=theme["secondary"][2], g=theme["secondary"][1], b=theme["secondary"][0])
+        accent_color = sv.Color(r=theme["accent"][2], g=theme["accent"][1], b=theme["accent"][0])
 
-            # Privacy Blur Mode
-            if self.blur_faces:
-                sub_face = frame[y:y+bh, x:x+bw]
-                if sub_face.size > 0:
-                    blur_k = max(31, (min(bw, bh) // 3) | 1)
-                    blurred = cv2.GaussianBlur(sub_face, (blur_k, blur_k), 30)
-                    frame[y:y+bh, x:x+bw] = blurred
+        # 1. Detect & Track with Roboflow Supervision
+        raw_detections = self.detect_faces(frame)
+        detections = self.tracker.update_with_detections(raw_detections)
 
-            # Draw Target Box & Reticle
-            pt1 = (x, y)
-            pt2 = (x + bw, y + bh)
+        # If ByteTrack loses faces temporarily, fallback to raw detections for visualization
+        if len(detections) == 0 and len(raw_detections) > 0:
+            detections = raw_detections
 
-            # Corner Bracket Box
-            self.draw_corner_rect(
-                frame, pt1, pt2, theme["primary"], thickness=2, line_len=min(bw, bh) // 4)
+        # 2. Privacy Blur using Roboflow Supervision BlurAnnotator
+        if self.blur_faces and len(detections) > 0:
+            frame = self.blur_annotator.annotate(scene=frame, detections=detections)
 
-            # Outer subtle box line
-            cv2.rectangle(frame, pt1, pt2, theme["secondary"], 1, cv2.LINE_AA)
+        # 3. Supervision Visual Annotations
+        if self.use_supervision_annotators and len(detections) > 0:
+            corner_annotator = sv.BoxCornerAnnotator(
+                color=primary_color,
+                thickness=2,
+                corner_length=max(10, min(w, h) // 25)
+            )
+            labels = []
+            for i in range(len(detections)):
+                conf = detections.confidence[i] if detections.confidence is not None else 0.9
+                track_id = detections.tracker_id[i] if detections.tracker_id is not None else i + 1
+                labels.append(f"FACE #{track_id} | {conf*100:.0f}%")
 
-            # Center Target Crosshair
-            cx, cy = x + bw // 2, y + bh // 2
+            label_annotator = sv.LabelAnnotator(
+                color=primary_color,
+                text_color=sv.Color(0, 0, 0),
+                text_scale=0.45,
+                text_thickness=1,
+                text_padding=4
+            )
+            frame = corner_annotator.annotate(scene=frame, detections=detections)
+            frame = label_annotator.annotate(scene=frame, detections=detections, labels=labels)
+
+        # 4. Reticles, Landmarks & Distance Indicators
+        landmarks_array = detections.data.get("landmarks", [])
+        for i in range(len(detections)):
+            x1, y1, x2, y2 = map(int, detections.xyxy[i])
+            bw, bh = x2 - x1, y2 - y1
+
+            # Proximity estimation
+            face_size_ratio = (bw * bh) / (w * h) if (w * h) > 0 else 0
+            proximity = "FAR" if face_size_ratio < 0.05 else ("MEDIUM" if face_size_ratio < 0.20 else "NEAR")
+
+            # Distance tag below box
+            cv2.putText(frame, f"PROXIMITY: {proximity}", (x1, max(0, y2 + 18)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, theme["text"], 1, cv2.LINE_AA)
+
+            # Center target crosshair
+            cx, cy = x1 + bw // 2, y1 + bh // 2
             ch_len = 8
-            cv2.line(frame, (cx - ch_len, cy),
-                     (cx + ch_len, cy), theme["accent"], 1)
-            cv2.line(frame, (cx, cy - ch_len),
-                     (cx, cy + ch_len), theme["accent"], 1)
+            cv2.line(frame, (cx - ch_len, cy), (cx + ch_len, cy), theme["accent"], 1)
+            cv2.line(frame, (cx, cy - ch_len), (cx, cy + ch_len), theme["accent"], 1)
 
-            # Face Tag Label
-            label = f"FACE #{i+1} | {score*100:.0f}%"
-            lbl_size, _ = cv2.getTextSize(
-                label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
-            lbl_w, lbl_h = lbl_size
-
-            # Label background box
-            cv2.rectangle(frame, (x, y - lbl_h - 10),
-                          (x + lbl_w + 12, y), theme["primary"], -1)
-            cv2.putText(frame, label, (x + 6, y - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 1, cv2.LINE_AA)
-
-            # Distance / Scale Estimate Indicator
-            face_size_ratio = (bw * bh) / (w * h)
-            proximity = "FAR" if face_size_ratio < 0.05 else (
-                "MEDIUM" if face_size_ratio < 0.20 else "NEAR")
-            cv2.putText(frame, f"PROXIMITY: {
-                        proximity}", (x, y + bh + 18), cv2.FONT_HERSHEY_SIMPLEX, 0.4, theme["text"], 1, cv2.LINE_AA)
-
-            # Draw Facial Landmarks & Features
-            if self.show_landmarks and i < len(landmarks_list) and landmarks_list[i] is not None:
-                lm = landmarks_list[i]
-                if len(lm) >= 10:
+            # Draw Facial Landmarks if available
+            if self.show_landmarks and i < len(landmarks_array) and landmarks_array[i] is not None:
+                lm = landmarks_array[i]
+                if isinstance(lm, (list, np.ndarray)) and len(lm) >= 10:
                     r_eye = (lm[0], lm[1])
                     l_eye = (lm[2], lm[3])
                     nose = (lm[4], lm[5])
                     r_mouth = (lm[6], lm[7])
                     l_mouth = (lm[8], lm[9])
 
-                    # Draw keypoint dots
                     pts = [r_eye, l_eye, nose, r_mouth, l_mouth]
                     for px, py in pts:
-                        cv2.circle(frame, (px, py), 3,
-                                   theme["accent"], -1, cv2.LINE_AA)
-                        cv2.circle(frame, (px, py), 6,
-                                   theme["primary"], 1, cv2.LINE_AA)
+                        cv2.circle(frame, (px, py), 3, theme["accent"], -1, cv2.LINE_AA)
+                        cv2.circle(frame, (px, py), 6, theme["primary"], 1, cv2.LINE_AA)
 
-                    # Feature vector lines (Eye-to-Eye, Eye-to-Nose, Nose-to-Mouth)
-                    cv2.line(frame, r_eye, l_eye,
-                             theme["secondary"], 1, cv2.LINE_AA)
-                    cv2.line(frame, r_eye, nose,
-                             theme["secondary"], 1, cv2.LINE_AA)
-                    cv2.line(frame, l_eye, nose,
-                             theme["secondary"], 1, cv2.LINE_AA)
-                    cv2.line(frame, r_mouth, l_mouth,
-                             theme["secondary"], 1, cv2.LINE_AA)
-                    cv2.line(frame, nose, ((
-                        r_mouth[0] + l_mouth[0])//2, (r_mouth[1] + l_mouth[1])//2), theme["secondary"], 1, cv2.LINE_AA)
+                    # Vector network lines
+                    cv2.line(frame, r_eye, l_eye, theme["secondary"], 1, cv2.LINE_AA)
+                    cv2.line(frame, r_eye, nose, theme["secondary"], 1, cv2.LINE_AA)
+                    cv2.line(frame, l_eye, nose, theme["secondary"], 1, cv2.LINE_AA)
+                    cv2.line(frame, r_mouth, l_mouth, theme["secondary"], 1, cv2.LINE_AA)
+                    cv2.line(frame, nose, ((r_mouth[0] + l_mouth[0]) // 2, (r_mouth[1] + l_mouth[1]) // 2), theme["secondary"], 1, cv2.LINE_AA)
 
-        # 4. Render Top HUD
-        self.draw_hud_header(frame, len(smoothed_boxes))
+        # 5. Render HUD Overlay
+        self.draw_hud_header(frame, len(detections))
         return frame
 
     def save_snapshot(self, frame):
@@ -446,21 +407,22 @@ class FaceTrackerApp:
         if cap is None:
             return
 
-        window_name = "Live Face Tracker"
+        window_name = "Roboflow Supervision Face Tracker"
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
         cv2.resizeWindow(window_name, self.target_width, self.target_height)
 
-        print("\n===========================================")
-        print("   LIVE FACE TRACKER STARTED SUCCESSFULLY  ")
-        print("===========================================")
+        print("\n=======================================================")
+        print("   ROBOFLOW SUPERVISION FACE TRACKER STARTED           ")
+        print("=======================================================")
         print("   Hotkeys:")
         print("   - [Q] / ESC : Exit application")
-        print("   - [B]       : Toggle Face Blur (Privacy)")
+        print("   - [B]       : Toggle Face Blur (Supervision BlurAnnotator)")
         print("   - [L]       : Toggle Landmarks")
         print("   - [C]       : Cycle Color Themes")
+        print("   - [T]       : Toggle Supervision Annotators")
         print("   - [S]       : Take Snapshot")
         print("   - [H]       : Toggle HUD Header")
-        print("===========================================\n")
+        print("=======================================================\n")
 
         try:
             while cap.isOpened():
@@ -492,16 +454,16 @@ class FaceTrackerApp:
                     break
                 elif key in [ord('b'), ord('B')]:
                     self.blur_faces = not self.blur_faces
-                    print(
-                        f"[*] Privacy Blur: {'ON' if self.blur_faces else 'OFF'}")
+                    print(f"[*] Privacy Blur: {'ON' if self.blur_faces else 'OFF'}")
                 elif key in [ord('l'), ord('L')]:
                     self.show_landmarks = not self.show_landmarks
-                    print(
-                        f"[*] Landmarks: {'ON' if self.show_landmarks else 'OFF'}")
+                    print(f"[*] Landmarks: {'ON' if self.show_landmarks else 'OFF'}")
                 elif key in [ord('c'), ord('C')]:
                     self.theme_idx = (self.theme_idx + 1) % len(THEME_NAMES)
-                    print(
-                        f"[*] Changed theme to: {THEME_NAMES[self.theme_idx]}")
+                    print(f"[*] Changed theme to: {THEME_NAMES[self.theme_idx]}")
+                elif key in [ord('t'), ord('T')]:
+                    self.use_supervision_annotators = not self.use_supervision_annotators
+                    print(f"[*] Supervision Annotators: {'ON' if self.use_supervision_annotators else 'OFF'}")
                 elif key in [ord('s'), ord('S')]:
                     self.save_snapshot(processed)
                 elif key in [ord('h'), ord('H')]:
@@ -517,7 +479,7 @@ class FaceTrackerApp:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Live Face Tracker with OpenCV & YuNet AI")
+        description="Roboflow Supervision Real-Time Face Tracker")
     parser.add_argument("--cam", type=int, default=0,
                         help="Webcam device index (default: 0)")
     parser.add_argument("--width", type=int, default=1280,
