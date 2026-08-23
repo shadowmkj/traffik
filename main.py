@@ -44,8 +44,7 @@ supervision.detection.line_zone.cross_product = _patched_cross_product
 # ==============================================================================
 
 # Paths configuration
-SOURCE_VIDEO_PATH = "short.mp4" if os.path.exists(
-    "traffic.mp4") else "short.mp4"
+SOURCE_VIDEO_PATH = "short.mp4"
 TARGET_VIDEO_PATH = "output.mp4"
 CAPTURES_DIR = "captures"
 PLATES_CSV_PATH = "number_plates.csv"
@@ -61,8 +60,7 @@ if not os.path.exists(PLATES_CSV_PATH):
                         "PlateText", "Confidence", "CropFile"])
 
 # Load YOLOv8 detection model & EasyOCR text recognition engine
-model = YOLO('yolo26s.pt')
-ocr_reader = easyocr.Reader(['en'], gpu=(DEVICE in ("cuda", "mps")))
+model = YOLO('yolov8n.pt')
 
 # Track unique number plates to avoid printing duplicate log lines per frame
 detected_plates_history = {}
@@ -138,38 +136,38 @@ def process_frame(frame: np.ndarray, frame_idx: int) -> np.ndarray:
             cv2.imwrite(save_path, crop)
 
             # Perform text detection and OCR on vehicle crop for license plates
-            if crop.shape[0] >= 20 and crop.shape[1] >= 20:
-                ocr_results = ocr_reader.readtext(crop)
-                for bbox, raw_text, ocr_conf in ocr_results:
-                    # Clean and format alphanumeric license plate characters
-                    clean_plate = re.sub(r'[^A-Z0-9]', '', raw_text.upper())
-
-                    # Filter for plausible license plate lengths (>= 4 chars) and confidence
-                    if len(clean_plate) >= 4 and ocr_conf >= 0.35:
-                        track_key = f"track_{
-                            tracker_id}" if tracker_id is not None else f"det_{frame_idx}_{idx}"
-                        prev_conf = detected_plates_history.get(
-                            track_key, {}).get("confidence", 0.0)
-
-                        if ocr_conf > prev_conf:
-                            detected_plates_history[track_key] = {
-                                "plate": clean_plate,
-                                "raw": raw_text,
-                                "confidence": ocr_conf,
-                                "frame": frame_idx,
-                                "class": class_name,
-                                "file": filename,
-                            }
-
-                            # 1. Print plate immediately to console
-                            print(f"[PLATE DETECTED] Frame {frame_idx:04d} | Track #{tracker_id} | Class: {
-                                  class_name} | Plate: {clean_plate} (conf: {ocr_conf:.2%})")
-
-                            # 2. Append detected plate to CSV file
-                            with open(PLATES_CSV_PATH, mode="a", newline="", encoding="utf-8") as f:
-                                writer = csv.writer(f)
-                                writer.writerow(
-                                    [frame_idx, tracker_id, class_name, clean_plate, f"{ocr_conf:.4f}", filename])
+            # if crop.shape[0] >= 20 and crop.shape[1] >= 20:
+            #     ocr_results = ocr_reader.readtext(crop)
+            #     for bbox, raw_text, ocr_conf in ocr_results:
+            #         # Clean and format alphanumeric license plate characters
+            #         clean_plate = re.sub(r'[^A-Z0-9]', '', raw_text.upper())
+            #
+            #         # Filter for plausible license plate lengths (>= 4 chars) and confidence
+            #         if len(clean_plate) >= 4 and ocr_conf >= 0.35:
+            #             track_key = f"track_{
+            #                 tracker_id}" if tracker_id is not None else f"det_{frame_idx}_{idx}"
+            #             prev_conf = detected_plates_history.get(
+            #                 track_key, {}).get("confidence", 0.0)
+            #
+            #             if ocr_conf > prev_conf:
+            #                 detected_plates_history[track_key] = {
+            #                     "plate": clean_plate,
+            #                     "raw": raw_text,
+            #                     "confidence": ocr_conf,
+            #                     "frame": frame_idx,
+            #                     "class": class_name,
+            #                     "file": filename,
+            #                 }
+            #
+            #                 # 1. Print plate immediately to console
+            #                 print(f"[PLATE DETECTED] Frame {frame_idx:04d} | Track #{tracker_id} | Class: {
+            #                       class_name} | Plate: {clean_plate} (conf: {ocr_conf:.2%})")
+            #
+            #                 # 2. Append detected plate to CSV file
+            #                 with open(PLATES_CSV_PATH, mode="a", newline="", encoding="utf-8") as f:
+            #                     writer = csv.writer(f)
+            #                     writer.writerow(
+            #                         [frame_idx, tracker_id, class_name, clean_plate, f"{ocr_conf:.4f}", filename])
 
     # Update line crossing logic
     line_zone.trigger(detections=detections)
@@ -230,7 +228,7 @@ def main():
     for track_key, info in detected_plates_history.items():
         print(f" • {track_key} ({info['class']}): {info['plate']} (conf: {
               info['confidence']:.2%}, frame {info['frame']})")
-    print(f"All number plate detections saved to: '{PLATES_CSV_PATH}'")
+    # print(f"All number plate detections saved to: '{PLATES_CSV_PATH}'")
     print("==================================================\n")
 
 
