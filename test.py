@@ -1,8 +1,17 @@
+import torch
 from ultralytics import YOLO
 import numpy as np
 import supervision as sv
 import supervision.detection.utils.internal
 import supervision.detection.line_zone
+
+# Detect Hardware Acceleration: NVIDIA CUDA > Apple Silicon MPS > CPU
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+elif torch.backends.mps.is_available():
+    DEVICE = "mps"
+else:
+    DEVICE = "cpu"
 
 
 # Fix for Supervision compatibility with NumPy 2.0+ 2D
@@ -38,7 +47,7 @@ box_annotator = sv.BoxAnnotator(thickness=2)
 
 
 def process_frame(frame: np.ndarray, _) -> np.ndarray:
-    results = model(frame)[0]
+    results = model(frame, device=DEVICE)[0]
     detections = sv.Detections.from_ultralytics(results)
     detections = tracker.update_with_detections(detections)
     line_zone.trigger(detections=detections)

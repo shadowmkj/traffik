@@ -1,10 +1,20 @@
 import os
 import cv2
 import numpy as np
+import torch
 from ultralytics import YOLO
 import supervision as sv
 import supervision.detection.utils.internal
 import supervision.detection.line_zone
+
+
+# Detect Hardware Acceleration: NVIDIA CUDA > Apple Silicon MPS > CPU
+if torch.cuda.is_available():
+    DEVICE = "cuda"
+elif torch.backends.mps.is_available():
+    DEVICE = "mps"
+else:
+    DEVICE = "cpu"
 
 
 # ==============================================================================
@@ -38,7 +48,7 @@ TARGET_VIDEO_PATH = "stream_out.mp4"
 VEHICLE_CLASS_IDS = [2, 3, 5, 7]
 
 # Load higher-accuracy model (yolo26s.pt or yolov8m.pt produce much fewer false negatives than yolov8n.pt)
-MODEL_PATH = "yolo26s.pt" if os.path.exists("yolo26s.pt") else "yolov8n.pt"
+MODEL_PATH = "yolov8n.pt" if os.path.exists("yolov8n.pt") else "yolov8n.pt"
 model = YOLO(MODEL_PATH)
 video_info = sv.VideoInfo.from_video_path(video_path=SOURCE_VIDEO_PATH)
 
@@ -73,6 +83,7 @@ label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1)
 
 def main():
     print(f"Starting live video stream for '{SOURCE_VIDEO_PATH}'...")
+    print(f"Hardware Acceleration Device: {DEVICE.upper()}")
     print("Press 'q' or 'ESC' in the window to stop streaming early.\n")
 
     window_name = "Traffik Live Tracking Stream"
@@ -92,8 +103,9 @@ def main():
 
     try:
         for frame_idx, frame in enumerate(frames_generator):
-            # Run YOLO detection on current frame with higher resolution (imgsz=1280) and conf=0.25
-            results = model(frame, conf=0.25, imgsz=1280, verbose=False)[0]
+            # Run YOLO detection on current frame using Metal (MPS) GPU acceleration
+            results = model(frame, conf=0.25, imgsz=1280,
+                            device=DEVICE, verbose=False)[0]
             detections = sv.Detections.from_ultralytics(results)
 
             # Filter raw detections to vehicle classes (car, motorcycle, bus, truck) only
