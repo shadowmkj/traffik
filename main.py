@@ -18,6 +18,10 @@ elif torch.backends.mps.is_available():
 else:
     DEVICE = "cpu"
 
+print(torch.cuda.is_available())
+print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA")
+print(torch.version.cuda)
+
 
 # ==============================================================================
 # 1. Compatibility Fixes
