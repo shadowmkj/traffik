@@ -6,7 +6,7 @@ import numpy as np
 import supervision as sv
 
 
-def parse_args():
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="Interactive Dual-Line Gate Setup Tool (Click 4 points to define Line A and Line B)."
     )
@@ -16,20 +16,22 @@ def parse_args():
         default="clip_4.mp4" if os.path.exists("clip_4.mp4") else ("traffic.mp4" if os.path.exists("traffic.mp4") else "clip.mp4"),
         help="Path to source video file (e.g. clip_4.mp4). Default: clip_4.mp4"
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def main():
-    args = parse_args()
-    source_video_path = args.source
-
+def run_setup_gate(source_video_path: str):
     if not os.path.exists(source_video_path):
         print(f"Error: Video file '{source_video_path}' not found.")
         return
 
     # Load first frame of source video
     generator = sv.get_video_frames_generator(source_path=source_video_path)
-    base_frame = next(generator)
+    try:
+        base_frame = next(generator)
+    except StopIteration:
+        print(f"Error: Could not read frames from '{source_video_path}'.")
+        return
+
     h, w, _ = base_frame.shape
 
     print("==================================================")
@@ -99,12 +101,12 @@ def main():
 
                 if len(points) == 4:
                     print("\n=======================================================")
-                    print("COPY THESE COORDINATES INTO stream.py OR main.py:")
+                    print("COPY THESE COORDINATES INTO stream.py OR configs/default.toml:")
                     print("-------------------------------------------------------")
-                    print(f"LINE_A_START = sv.Point({points[0][0]}, {points[0][1]})")
-                    print(f"LINE_A_END   = sv.Point({points[1][0]}, {points[1][1]})")
-                    print(f"LINE_B_START = sv.Point({points[2][0]}, {points[2][1]})")
-                    print(f"LINE_B_END   = sv.Point({points[3][0]}, {points[3][1]})")
+                    print(f"line_a_start = [{points[0][0]}, {points[0][1]}]")
+                    print(f"line_a_end   = [{points[1][0]}, {points[1][1]}]")
+                    print(f"line_b_start = [{points[2][0]}, {points[2][1]}]")
+                    print(f"line_b_end   = [{points[3][0]}, {points[3][1]}]")
                     print("=======================================================\n")
 
     window_name = f"Dual-Line Gate Setup - {os.path.basename(source_video_path)}"
@@ -129,6 +131,11 @@ def main():
         print("Saved preview image to 'gate_preview.jpg'.")
 
     cv2.destroyAllWindows()
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    run_setup_gate(args.source)
 
 
 if __name__ == "__main__":
