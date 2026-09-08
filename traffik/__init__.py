@@ -12,6 +12,7 @@ from traffik.config import (
 from traffik.counting import DualLineGate, GateState
 from traffik.detection import VehicleDetector
 from traffik.ocr import PlateReader, PlateResult, clean_plate_text
+from traffik.pipeline import PipelineSummary, VideoPipeline
 from traffik.tracking import VehicleTracker
 from traffik.visualization import VisualAnnotator, draw_hud_banner
 
@@ -23,11 +24,13 @@ __all__ = [
     "GateState",
     "GeneralConfig",
     "OCRConfig",
+    "PipelineSummary",
     "PlateReader",
     "PlateResult",
     "TrackerConfig",
     "VehicleDetector",
     "VehicleTracker",
+    "VideoPipeline",
     "VisualAnnotator",
     "clean_plate_text",
     "draw_hud_banner",
