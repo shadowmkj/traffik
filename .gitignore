@@ -35,11 +35,11 @@ dist/
 runs/
 
 # Video files & media outputs
-output.mp4
 *.avi
 *.mov
 *.mkv
 *.webm
+clips/
 
 # Environment variables & secrets
 .env
@@ -60,3 +60,6 @@ output.mp4
 .Spotlight-V100
 .Trashes
 Thumbs.db
+
+# Captures
+captures/
