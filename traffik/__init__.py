@@ -10,6 +10,7 @@ from traffik.config import (
     get_device,
 )
 from traffik.detection import VehicleDetector
+from traffik.tracking import VehicleTracker
 
 __all__ = [
     "Config",
@@ -19,6 +20,8 @@ __all__ = [
     "OCRConfig",
     "TrackerConfig",
     "VehicleDetector",
+    "VehicleTracker",
     "get_device",
 ]
+
 
