@@ -16,7 +16,7 @@ if torch.cuda.is_available():
 elif torch.backends.mps.is_available():
     DEVICE = "mps"
 else:
-    DEVICE = "cpu"
+    DEVICE = "mps"
 
 print(torch.cuda.is_available())
 print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else "No CUDA")
@@ -48,7 +48,7 @@ supervision.detection.line_zone.cross_product = _patched_cross_product
 # ==============================================================================
 
 # Paths configuration
-SOURCE_VIDEO_PATH = "short.mp4"
+SOURCE_VIDEO_PATH = "clip_1.mp4"
 TARGET_VIDEO_PATH = "output.mp4"
 CAPTURES_DIR = "captures"
 PLATES_CSV_PATH = "number_plates.csv"
