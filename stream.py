@@ -46,12 +46,10 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Stream or batch process vehicle tracking video."
     )
-    # Positional argument for source video file
+    # Required positional argument for source video file
     parser.add_argument(
         "source",
-        nargs="?",
-        default="clip.mp4",
-        help="Path to source video file (e.g. clip.mp4). Default: clip.mp4"
+        help="Path to source video file (e.g. clip.mp4)."
     )
     parser.add_argument(
         "-o", "--output",
@@ -93,7 +91,7 @@ def main():
     source_video_path = args.source
 
     if not os.path.exists(source_video_path):
-        print(f"Error: Source video file '{source_video_path}' not found.")
+        print(f"\nError: Source video file '{source_video_path}' not found.\n")
         return
 
     # Derive output filename with '_out' appended to the input filename stem
@@ -111,12 +109,15 @@ def main():
         print(f"Target video:     '{target_video_path}'")
     else:
         print("Target video:     Disabled (--no-save)")
-    print(f"Live stream GUI:  {'Disabled (Fast Headless Mode)' if args.no_stream else 'Enabled (Press q/ESC to stop)'}")
-    print(f"Inference device: {DEVICE.upper()} (imgsz={args.imgsz}, conf={args.conf})")
+    print(f"Live stream GUI:  {
+          'Disabled (Fast Headless Mode)' if args.no_stream else 'Enabled (Press q/ESC to stop)'}")
+    print(f"Inference device: {DEVICE.upper()
+                               } (imgsz={args.imgsz}, conf={args.conf})")
     print("================================================\n")
 
     # Load YOLO detection model
-    model_path = "yolo26s.pt" if os.path.exists("yolo26s.pt") else ("yolov8m.pt" if os.path.exists("yolov8m.pt") else "yolov8n.pt")
+    model_path = "yolo26s.pt" if os.path.exists("yolo26s.pt") else (
+        "yolov8m.pt" if os.path.exists("yolov8m.pt") else "yolov8n.pt")
     model = YOLO(model_path)
 
     # COCO vehicle class IDs: 2 (car), 3 (motorcycle), 5 (bus), 7 (truck)
@@ -159,18 +160,21 @@ def main():
     if not args.no_stream:
         cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
-    frames_generator = sv.get_video_frames_generator(source_path=source_video_path)
+    frames_generator = sv.get_video_frames_generator(
+        source_path=source_video_path)
 
     # Wrap with tqdm progress bar in headless mode for clean progress tracking
     if args.no_stream:
         total_frames = getattr(video_info, "total_frames", None)
-        frame_iterable = enumerate(tqdm(frames_generator, total=total_frames, desc="Processing Video", unit="frame"))
+        frame_iterable = enumerate(tqdm(
+            frames_generator, total=total_frames, desc="Processing Video", unit="frame"))
     else:
         frame_iterable = enumerate(frames_generator)
 
     sink = None
     if target_video_path:
-        sink = sv.VideoSink(target_path=target_video_path, video_info=video_info)
+        sink = sv.VideoSink(target_path=target_video_path,
+                            video_info=video_info)
         sink.__enter__()
 
     try:
@@ -188,7 +192,8 @@ def main():
                 detections = sv.Detections.from_ultralytics(results)
 
                 # Filter raw detections to vehicle classes only
-                detections = detections[np.isin(detections.class_id, vehicle_class_ids)]
+                detections = detections[np.isin(
+                    detections.class_id, vehicle_class_ids)]
 
                 # Update ByteTrack tracker state
                 detections = tracker.update_with_detections(detections)
@@ -201,7 +206,8 @@ def main():
                     labels = []
                     if detections.tracker_id is not None:
                         for class_id, tracker_id in zip(detections.class_id, detections.tracker_id):
-                            class_name = model.names[int(class_id)] if hasattr(model, "names") else f"class_{class_id}"
+                            class_name = model.names[int(class_id)] if hasattr(
+                                model, "names") else f"class_{class_id}"
                             labels.append(f"{class_name} #{tracker_id}")
 
                     # In-place annotation on frame avoids redundant allocations
@@ -229,7 +235,8 @@ def main():
                         cv2.imshow(window_name, annotated_frame)
                         key = cv2.waitKey(1) & 0xFF
                         if key in (27, ord('q')):
-                            print(f"\nStreaming stopped early by user at frame {frame_idx}.")
+                            print(f"\nStreaming stopped early by user at frame {
+                                  frame_idx}.")
                             break
 
     finally:
