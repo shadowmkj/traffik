@@ -1,5 +1,6 @@
 import os
 import argparse
+from collections import defaultdict, Counter
 import cv2
 import numpy as np
 import torch
@@ -76,8 +77,8 @@ def parse_args():
     parser.add_argument(
         "--conf",
         type=float,
-        default=0.25,
-        help="YOLO detection confidence threshold. Default: 0.25"
+        default=0.20,
+        help="YOLO detection confidence threshold. Default: 0.20"
     )
     return parser.parse_args()
 
@@ -135,13 +136,16 @@ def main():
     start = sv.Point(start_x, start_y)
     end = sv.Point(end_x, end_y)
 
-    # Initialize tracking with tuned lost_track_buffer
+    # Initialize tracking with tuned lost_track_buffer (1.5s memory) and lower activation threshold
     tracker = sv.ByteTrack(
-        track_activation_threshold=0.25,
-        lost_track_buffer=30,
-        minimum_matching_threshold=0.8,
+        track_activation_threshold=0.20,
+        lost_track_buffer=45,
+        minimum_matching_threshold=0.75,
         frame_rate=video_info.fps
     )
+
+    # Track-level class memory for majority voting (prevents auto/car/truck flickering)
+    track_class_history = defaultdict(Counter)
 
     # Use multiple triggering anchors (BOTTOM_CENTER & CENTER)
     line_zone = sv.LineZone(
@@ -195,20 +199,29 @@ def main():
                 detections = detections[np.isin(
                     detections.class_id, vehicle_class_ids)]
 
-                # Update ByteTrack tracker state
+                # Update ByteTrack tracker state (spatial tracking independent of class fluctuations)
                 detections = tracker.update_with_detections(detections)
 
-                # Trigger line zone counter update
+                # Trigger line zone counter update (prioritizes vehicle crossing count)
                 line_zone.trigger(detections=detections)
 
                 # If saving video or showing GUI, perform annotations
                 if sink or not args.no_stream:
                     labels = []
                     if detections.tracker_id is not None:
-                        for class_id, tracker_id in zip(detections.class_id, detections.tracker_id):
-                            class_name = model.names[int(class_id)] if hasattr(
+                        confidences = (
+                            detections.confidence
+                            if detections.confidence is not None
+                            else [1.0] * len(detections)
+                        )
+                        for class_id, tracker_id, conf in zip(detections.class_id, detections.tracker_id, confidences):
+                            raw_class = model.names[int(class_id)] if hasattr(
                                 model, "names") else f"class_{class_id}"
-                            labels.append(f"{class_name} #{tracker_id}")
+                            # Accumulate confidence-weighted votes across frames
+                            track_class_history[tracker_id][raw_class] += float(conf)
+                            # Majority-voted smoothed class
+                            smoothed_class = track_class_history[tracker_id].most_common(1)[0][0]
+                            labels.append(f"{smoothed_class} #{tracker_id}")
 
                     # In-place annotation on frame avoids redundant allocations
                     annotated_frame = box_annotator.annotate(
