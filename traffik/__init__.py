@@ -9,13 +9,16 @@ from traffik.config import (
     TrackerConfig,
     get_device,
 )
+from traffik.counting import DualLineGate, GateState
 from traffik.detection import VehicleDetector
 from traffik.tracking import VehicleTracker
 
 __all__ = [
     "Config",
     "DetectorConfig",
+    "DualLineGate",
     "GateConfig",
+    "GateState",
     "GeneralConfig",
     "OCRConfig",
     "TrackerConfig",
@@ -23,5 +26,3 @@ __all__ = [
     "VehicleTracker",
     "get_device",
 ]
-
-
