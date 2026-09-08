@@ -11,6 +11,7 @@ from traffik.config import (
 )
 from traffik.counting import DualLineGate, GateState
 from traffik.detection import VehicleDetector
+from traffik.ocr import PlateReader, PlateResult, clean_plate_text
 from traffik.tracking import VehicleTracker
 
 __all__ = [
@@ -21,8 +22,12 @@ __all__ = [
     "GateState",
     "GeneralConfig",
     "OCRConfig",
+    "PlateReader",
+    "PlateResult",
     "TrackerConfig",
     "VehicleDetector",
     "VehicleTracker",
+    "clean_plate_text",
     "get_device",
 ]
+
