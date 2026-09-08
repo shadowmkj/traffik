@@ -3,6 +3,7 @@ import argparse
 import cv2
 import numpy as np
 import torch
+from tqdm import tqdm
 from ultralytics import YOLO
 import supervision as sv
 import supervision.detection.utils.internal
@@ -43,7 +44,7 @@ supervision.detection.line_zone.cross_product = _patched_cross_product
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Stream and track vehicles in video with real-time playback."
+        description="Stream or batch process vehicle tracking video."
     )
     # Positional argument for source video file
     parser.add_argument(
@@ -58,15 +59,33 @@ def parse_args():
         help="Optional custom output path. Defaults to <source_name>_out.<ext>"
     )
     parser.add_argument(
+        "--no-stream", "--headless",
+        dest="no_stream",
+        action="store_true",
+        help="Disable live GUI display for maximum batch processing speed."
+    )
+    parser.add_argument(
         "--no-save",
         action="store_true",
-        help="Disable recording output video to file."
+        help="Disable saving output video to file."
+    )
+    parser.add_argument(
+        "--imgsz",
+        type=int,
+        default=640,
+        help="YOLO inference resolution (e.g. 640 for speed, 1280 for higher accuracy). Default: 640"
+    )
+    parser.add_argument(
+        "--conf",
+        type=float,
+        default=0.25,
+        help="YOLO detection confidence threshold. Default: 0.25"
     )
     return parser.parse_args()
 
 
 # ==============================================================================
-# 3. Live Streaming & Processing Pipeline
+# 3. Processing Pipeline
 # ==============================================================================
 
 def main():
@@ -86,13 +105,15 @@ def main():
     else:
         target_video_path = f"{base}_out{ext}"
 
-    print(f"Source video: '{source_video_path}'")
+    print("================ Configuration ================")
+    print(f"Source video:     '{source_video_path}'")
     if target_video_path:
-        print(f"Target video: '{target_video_path}'")
+        print(f"Target video:     '{target_video_path}'")
     else:
-        print("Recording:    Disabled (--no-save)")
-    print(f"Hardware Acceleration Device: {DEVICE.upper()}")
-    print("Press 'q' or 'ESC' in the playback window to stop streaming early.\n")
+        print("Target video:     Disabled (--no-save)")
+    print(f"Live stream GUI:  {'Disabled (Fast Headless Mode)' if args.no_stream else 'Enabled (Press q/ESC to stop)'}")
+    print(f"Inference device: {DEVICE.upper()} (imgsz={args.imgsz}, conf={args.conf})")
+    print("================================================\n")
 
     # Load YOLO detection model
     model_path = "yolo26s.pt" if os.path.exists("yolo26s.pt") else ("yolov8m.pt" if os.path.exists("yolov8m.pt") else "yolov8n.pt")
@@ -133,11 +154,19 @@ def main():
     box_annotator = sv.BoxAnnotator(thickness=2)
     label_annotator = sv.LabelAnnotator(text_scale=0.5, text_thickness=1)
 
+    # Only open OpenCV window when streaming is enabled
     window_name = f"Traffik Stream - {os.path.basename(source_video_path)}"
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+    if not args.no_stream:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
-    # Stream frames on-the-fly
     frames_generator = sv.get_video_frames_generator(source_path=source_video_path)
+
+    # Wrap with tqdm progress bar in headless mode for clean progress tracking
+    if args.no_stream:
+        total_frames = getattr(video_info, "total_frames", None)
+        frame_iterable = enumerate(tqdm(frames_generator, total=total_frames, desc="Processing Video", unit="frame"))
+    else:
+        frame_iterable = enumerate(frames_generator)
 
     sink = None
     if target_video_path:
@@ -145,62 +174,71 @@ def main():
         sink.__enter__()
 
     try:
-        for frame_idx, frame in enumerate(frames_generator):
-            # Run YOLO detection on current frame using GPU acceleration
-            results = model(frame, conf=0.25, imgsz=1280, device=DEVICE, verbose=False)[0]
-            detections = sv.Detections.from_ultralytics(results)
+        # Disable autograd overhead with torch.inference_mode for fast execution
+        with torch.inference_mode():
+            for frame_idx, frame in frame_iterable:
+                # Fast GPU model inference
+                results = model(
+                    frame,
+                    conf=args.conf,
+                    imgsz=args.imgsz,
+                    device=DEVICE,
+                    verbose=False
+                )[0]
+                detections = sv.Detections.from_ultralytics(results)
 
-            # Filter raw detections to vehicle classes (car, motorcycle, bus, truck) only
-            detections = detections[np.isin(detections.class_id, vehicle_class_ids)]
+                # Filter raw detections to vehicle classes only
+                detections = detections[np.isin(detections.class_id, vehicle_class_ids)]
 
-            # Update ByteTrack tracker state
-            detections = tracker.update_with_detections(detections)
+                # Update ByteTrack tracker state
+                detections = tracker.update_with_detections(detections)
 
-            # Trigger line zone counter update
-            line_zone.trigger(detections=detections)
+                # Trigger line zone counter update
+                line_zone.trigger(detections=detections)
 
-            # Build label strings showing class and tracking ID
-            labels = []
-            if detections.tracker_id is not None:
-                for class_id, tracker_id in zip(detections.class_id, detections.tracker_id):
-                    class_name = model.names[int(class_id)] if hasattr(model, "names") else f"class_{class_id}"
-                    labels.append(f"{class_name} #{tracker_id}")
+                # If saving video or showing GUI, perform annotations
+                if sink or not args.no_stream:
+                    labels = []
+                    if detections.tracker_id is not None:
+                        for class_id, tracker_id in zip(detections.class_id, detections.tracker_id):
+                            class_name = model.names[int(class_id)] if hasattr(model, "names") else f"class_{class_id}"
+                            labels.append(f"{class_name} #{tracker_id}")
 
-            # Annotate frame with boxes, labels, and line zone counter stats
-            annotated_frame = box_annotator.annotate(
-                scene=frame.copy(),
-                detections=detections
-            )
-            if labels:
-                annotated_frame = label_annotator.annotate(
-                    scene=annotated_frame,
-                    detections=detections,
-                    labels=labels
-                )
-            annotated_frame = line_zone_annotator.annotate(
-                annotated_frame,
-                line_counter=line_zone
-            )
+                    # In-place annotation on frame avoids redundant allocations
+                    annotated_frame = box_annotator.annotate(
+                        scene=frame,
+                        detections=detections
+                    )
+                    if labels:
+                        annotated_frame = label_annotator.annotate(
+                            scene=annotated_frame,
+                            detections=detections,
+                            labels=labels
+                        )
+                    annotated_frame = line_zone_annotator.annotate(
+                        annotated_frame,
+                        line_counter=line_zone
+                    )
 
-            # Stream immediately to screen
-            cv2.imshow(window_name, annotated_frame)
+                    # Write frame to video sink
+                    if sink:
+                        sink.write_frame(annotated_frame)
 
-            # Write frame to output video if sink is enabled
-            if sink:
-                sink.write_frame(annotated_frame)
-
-            # Wait 1ms for keypress to allow real-time display and quit control
-            key = cv2.waitKey(1) & 0xFF
-            if key in (27, ord('q')):
-                print(f"Streaming stopped early by user at frame {frame_idx}.")
-                break
+                    # Handle live GUI streaming if enabled
+                    if not args.no_stream:
+                        cv2.imshow(window_name, annotated_frame)
+                        key = cv2.waitKey(1) & 0xFF
+                        if key in (27, ord('q')):
+                            print(f"\nStreaming stopped early by user at frame {frame_idx}.")
+                            break
 
     finally:
         if sink:
             sink.__exit__(None, None, None)
-        cv2.destroyAllWindows()
+        if not args.no_stream:
+            cv2.destroyAllWindows()
 
-    print("\n================ Streaming Summary ================")
+    print("\n================ Execution Summary ================")
     print(f"Total vehicles crossed IN:  {line_zone.in_count}")
     print(f"Total vehicles crossed OUT: {line_zone.out_count}")
     if target_video_path and os.path.exists(target_video_path):
