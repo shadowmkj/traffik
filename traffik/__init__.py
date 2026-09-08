@@ -13,6 +13,7 @@ from traffik.counting import DualLineGate, GateState
 from traffik.detection import VehicleDetector
 from traffik.ocr import PlateReader, PlateResult, clean_plate_text
 from traffik.tracking import VehicleTracker
+from traffik.visualization import VisualAnnotator, draw_hud_banner
 
 __all__ = [
     "Config",
@@ -27,7 +28,9 @@ __all__ = [
     "TrackerConfig",
     "VehicleDetector",
     "VehicleTracker",
+    "VisualAnnotator",
     "clean_plate_text",
+    "draw_hud_banner",
     "get_device",
 ]
 
