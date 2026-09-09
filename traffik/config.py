@@ -58,7 +58,7 @@ class GeneralConfig:
 @dataclass
 class DetectorConfig:
     """Object detector configuration parameters."""
-    model_path: str = "yolo26s.pt"
+    model_path: str = "yolo11n.pt"
     conf_threshold: float = 0.20
     imgsz: int = 640
     # COCO classes: 2=car, 3=motorcycle, 5=bus, 7=truck

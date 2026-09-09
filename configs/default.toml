@@ -3,7 +3,7 @@ device = "auto"
 captures_dir = "captures"
 
 [detector]
-model_path = "yolo26s.pt"
+model_path = "yolo11n.pt"
 conf_threshold = 0.20
 imgsz = 640
 classes = [2, 3, 5, 7]

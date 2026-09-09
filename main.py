@@ -43,7 +43,8 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "source",
         nargs="?",
-        default=SOURCE_VIDEO_PATH if os.path.exists(SOURCE_VIDEO_PATH) else ("traffic.mp4" if os.path.exists("traffic.mp4") else "clip.mp4"),
+        default=SOURCE_VIDEO_PATH if os.path.exists(SOURCE_VIDEO_PATH) else (
+            "traffic.mp4" if os.path.exists("traffic.mp4") else "clip.mp4"),
         help="Path to source video file (e.g. clip_1.mp4).",
     )
     parser.add_argument(
@@ -80,8 +81,10 @@ def main(argv: Optional[List[str]] = None) -> None:
         print(f"Error: Source video file '{source_video_path}' not found.")
         return
 
-    config_path = args.config if (args.config and os.path.exists(args.config)) else "configs/default.toml"
-    cfg = Config.from_toml(config_path) if os.path.exists(config_path) else Config()
+    config_path = args.config if (args.config and os.path.exists(
+        args.config)) else "configs/default.toml"
+    cfg = Config.from_toml(config_path) if os.path.exists(
+        config_path) else Config()
     if not args.no_ocr:
         cfg.ocr.enabled = True
 

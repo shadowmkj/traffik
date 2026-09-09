@@ -1,7 +1,9 @@
-name,run,left,right
+name,run,in,out
 clip_1.mp4,1,12,12
 clip_2.mp4,1,19,5
 clip_3.mp4,1,8,4
 clip_4.mp4,1,8,2
+clip_4.mp4,2,12,2
+clip_4.mp4,3,12,4
 clip.mp4,1,19,12
 clip.mp4,2,19,12
