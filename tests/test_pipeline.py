@@ -139,3 +139,72 @@ def test_pipeline_run_with_ocr_enabled(synthetic_video: str, tmp_path: Path):
 
     assert isinstance(summary, PipelineSummary)
     assert summary.total_frames == 10
+
+
+def test_record_run_to_csv(tmp_path: Path):
+    """Verify record_run_to_csv creates and increments runs sequentially."""
+    from traffik.pipeline.engine import record_run_to_csv
+    csv_file = str(tmp_path / "outputs.csv")
+
+    # Run 1 for clip_4.mp4
+    r1 = record_run_to_csv(csv_file, "clips/clip_4.mp4", in_count=8, out_count=2)
+    assert r1 == 1
+
+    # Run 2 for clip_4.mp4
+    r2 = record_run_to_csv(csv_file, "clips/clip_4.mp4", in_count=10, out_count=3)
+    assert r2 == 2
+
+    # Run 1 for clip_1.mp4
+    r_other = record_run_to_csv(csv_file, "clips/clip_1.mp4", in_count=5, out_count=5)
+    assert r_other == 1
+
+    # Run 3 for clip_4.mp4
+    r3 = record_run_to_csv(csv_file, "clips/clip_4.mp4", in_count=12, out_count=4)
+    assert r3 == 3
+
+    # Check file content
+    with open(csv_file, mode="r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f.readlines()]
+
+    assert lines[0] == "name,run,in,out"
+    assert lines[1] == "clip_4.mp4,1,8,2"
+    assert lines[2] == "clip_4.mp4,2,10,3"
+    assert lines[3] == "clip_1.mp4,1,5,5"
+    assert lines[4] == "clip_4.mp4,3,12,4"
+
+
+def test_pipeline_outputs_csv_logging(synthetic_video: str, tmp_path: Path):
+    """Verify VideoPipeline logs execution results to outputs_csv."""
+    csv_file = str(tmp_path / "test_outputs.csv")
+    cfg = Config()
+    cfg.general.outputs_csv = csv_file
+
+    pipeline = VideoPipeline(cfg)
+    summary = pipeline.run(source_path=synthetic_video)
+
+    assert summary.run_number == 1
+    assert os.path.exists(csv_file)
+
+    # Second run on same video
+    summary2 = pipeline.run(source_path=synthetic_video)
+    assert summary2.run_number == 2
+
+
+def test_pipeline_skips_default_outputs_csv_during_pytest(synthetic_video: str):
+    """Verify VideoPipeline does not write to the repository outputs.csv during test runs."""
+    cfg = Config()
+    cfg.general.outputs_csv = "outputs.csv"
+
+    # Get current modification time and size of outputs.csv if it exists
+    mtime_before = os.path.getmtime("outputs.csv") if os.path.exists("outputs.csv") else None
+    size_before = os.path.getsize("outputs.csv") if os.path.exists("outputs.csv") else None
+
+    pipeline = VideoPipeline(cfg)
+    summary = pipeline.run(source_path=synthetic_video)
+
+    assert summary.run_number is None
+    if mtime_before is not None:
+        assert os.path.getmtime("outputs.csv") == mtime_before
+        assert os.path.getsize("outputs.csv") == size_before
+
+

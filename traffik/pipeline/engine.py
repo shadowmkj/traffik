@@ -10,6 +10,7 @@ This module orchestrates the end-to-end computer vision workflow:
 7. Processing metrics aggregation and summary reporting
 """
 
+import csv
 import os
 import time
 from dataclasses import dataclass
@@ -24,6 +25,53 @@ from traffik.detection.detector import VehicleDetector
 from traffik.ocr.plate_reader import PlateReader
 from traffik.tracking.tracker import VehicleTracker
 from traffik.visualization.hud import VisualAnnotator
+
+
+def record_run_to_csv(
+    csv_path: str,
+    source_path: str,
+    in_count: int,
+    out_count: int,
+) -> int:
+    """Record execution summary (name, run, in, out) to an outputs CSV log file.
+
+    Args:
+        csv_path: Path to the outputs CSV file.
+        source_path: Path or filename of the processed input video.
+        in_count: Number of vehicles crossed inward.
+        out_count: Number of vehicles crossed outward.
+
+    Returns:
+        The incremented run number for this video.
+    """
+    file_name = os.path.basename(source_path)
+    runs = []
+
+    if os.path.exists(csv_path):
+        with open(csv_path, mode="r", newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            header = next(reader, None)
+            for row in reader:
+                if len(row) >= 2 and row[0] == file_name:
+                    try:
+                        runs.append(int(row[1]))
+                    except ValueError:
+                        pass
+    else:
+        csv_dir = os.path.dirname(os.path.abspath(csv_path))
+        if csv_dir and not os.path.exists(csv_dir):
+            os.makedirs(csv_dir, exist_ok=True)
+        with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["name", "run", "in", "out"])
+
+    run_number = (max(runs) + 1) if runs else 1
+
+    with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([file_name, run_number, in_count, out_count])
+
+    return run_number
 
 
 # ==============================================================================
@@ -42,6 +90,7 @@ class PipelineSummary:
         unique_tracks: Number of unique vehicle tracks registered by the tracker.
         total_frames: Total number of video frames processed.
         fps: Effective end-to-end processing throughput in frames per second.
+        run_number: Incremental execution run index logged for this video file.
     """
     source: str
     target: Optional[str]
@@ -50,6 +99,7 @@ class PipelineSummary:
     unique_tracks: int
     total_frames: int
     fps: float
+    run_number: Optional[int] = None
 
 
 # ==============================================================================
@@ -217,6 +267,25 @@ class VideoPipeline:
                 cv2.destroyAllWindows()
 
         elapsed = max(0.001, time.time() - t0)
+
+        # Log run results to outputs CSV if configured
+        run_number: Optional[int] = None
+        if self.config.general.outputs_csv:
+            is_pytest = "PYTEST_CURRENT_TEST" in os.environ
+            is_default_output = os.path.abspath(self.config.general.outputs_csv) == os.path.abspath("outputs.csv")
+            if not (is_pytest and is_default_output):
+                try:
+                    run_number = record_run_to_csv(
+                        csv_path=self.config.general.outputs_csv,
+                        source_path=source_path,
+                        in_count=self.gate.in_count,
+                        out_count=self.gate.out_count,
+                    )
+                except Exception as e:
+                    print(
+                        f"[Traffik Pipeline] Warning: Could not write run metrics to '{self.config.general.outputs_csv}': {e}"
+                    )
+
         return PipelineSummary(
             source=source_path,
             target=target_path,
@@ -225,4 +294,5 @@ class VideoPipeline:
             unique_tracks=len(self.tracker.track_class_history),
             total_frames=processed_frames,
             fps=processed_frames / elapsed,
+            run_number=run_number,
         )

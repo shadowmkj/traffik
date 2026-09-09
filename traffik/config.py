@@ -53,6 +53,7 @@ class GeneralConfig:
     """General pipeline execution options."""
     device: str = "auto"
     captures_dir: str = "captures"
+    outputs_csv: str = "outputs.csv"
 
 
 @dataclass

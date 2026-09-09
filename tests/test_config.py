@@ -31,6 +31,7 @@ def test_config_defaults():
     assert isinstance(cfg.gate, GateConfig)
     assert isinstance(cfg.ocr, OCRConfig)
     assert cfg.general.device == "auto"
+    assert cfg.general.outputs_csv == "outputs.csv"
     assert cfg.detector.model_path == "yolo11n.pt"
     assert cfg.tracker.lost_track_buffer == 45
     assert cfg.gate.offset == 60
@@ -42,6 +43,7 @@ def test_default_toml_file():
     assert os.path.exists(default_toml_path)
     cfg = Config.from_toml(default_toml_path)
     assert cfg.general.device == "auto"
+    assert cfg.general.outputs_csv == "outputs.csv"
     assert cfg.detector.model_path == "yolo11n.pt"
     assert cfg.detector.classes == [2, 3, 5, 7]
     assert cfg.tracker.lost_track_buffer == 45

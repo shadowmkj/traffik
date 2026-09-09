@@ -1,6 +1,7 @@
 [general]
 device = "auto"
 captures_dir = "captures"
+outputs_csv = "outputs.csv"
 
 [detector]
 model_path = "yolo11n.pt"

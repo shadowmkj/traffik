@@ -121,6 +121,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     print(f"Total Vehicles Crossed IN:  {summary.in_count}")
     print(f"Total Vehicles Crossed OUT: {summary.out_count}")
     print(f"Processed Frames:           {summary.total_frames} ({summary.fps:.1f} FPS)")
+    if summary.run_number is not None:
+        print(f"Logged to CSV:              '{cfg.general.outputs_csv}' (Run #{summary.run_number})")
     if summary.target and os.path.exists(summary.target):
         print(f"Output Video Saved:         '{summary.target}'")
     print("====================================================\n")
