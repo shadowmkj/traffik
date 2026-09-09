@@ -61,8 +61,16 @@ class VehicleDetector:
         self.config = config
         self.device = get_device(device)
 
-        # Fallback to standard pretrained weights if custom model path does not exist
-        model_path = config.model_path if os.path.exists(config.model_path) else "yolov8n.pt"
+        # Resolve weights path, warning user if requested model path is missing
+        if os.path.exists(config.model_path):
+            model_path = config.model_path
+        else:
+            print(
+                f"[Traffik Detector] Warning: Model weights '{config.model_path}' not found on disk. Falling back to 'yolo11n.pt'."
+            )
+            model_path = "yolo11n.pt"
+
+        self.model_path = model_path
         self.model = YOLO(model_path)
         self.classes = config.classes
 
@@ -90,6 +98,7 @@ class VehicleDetector:
 
             # Filter detections to configured vehicle classes if specified
             if self.classes and len(detections) > 0:
-                detections = detections[np.isin(detections.class_id, self.classes)]
+                detections = detections[np.isin(
+                    detections.class_id, self.classes)]
 
             return detections

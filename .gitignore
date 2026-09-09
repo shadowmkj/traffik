@@ -39,6 +39,7 @@ runs/
 *.mov
 *.mkv
 *.webm
+*.jpg
 clips/
 
 # Environment variables & secrets
@@ -47,6 +48,8 @@ clips/
 !.env.example
 
 # IDEs & Editor configurations
+ai_docs/
+.superpowers/
 .vscode/
 .idea/
 *.swp

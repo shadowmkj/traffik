@@ -28,6 +28,9 @@ def create_parser() -> argparse.ArgumentParser:
         "-c", "--config", default="configs/default.toml", help="Path to TOML config"
     )
     p_proc.add_argument(
+        "-m", "--model", default=None, help="Override YOLO model weights path (e.g. yolo11n.pt, yolov8m.pt)"
+    )
+    p_proc.add_argument(
         "--ocr", action="store_true", help="Enable OCR license plate extraction"
     )
     p_proc.add_argument(
@@ -43,6 +46,9 @@ def create_parser() -> argparse.ArgumentParser:
     p_stream.add_argument("-o", "--output", default=None, help="Output video path")
     p_stream.add_argument(
         "-c", "--config", default="configs/default.toml", help="Path to TOML config"
+    )
+    p_stream.add_argument(
+        "-m", "--model", default=None, help="Override YOLO model weights path (e.g. yolo11n.pt, yolov8m.pt)"
     )
     p_stream.add_argument(
         "--no-save", action="store_true", help="Do not write output video to disk"
@@ -76,6 +82,9 @@ def main(argv: Optional[List[str]] = None) -> None:
     config_path = args.config if (args.config and os.path.exists(args.config)) else "configs/default.toml"
     cfg = Config.from_toml(config_path) if os.path.exists(config_path) else Config()
 
+    if getattr(args, "model", None):
+        cfg.detector.model_path = args.model
+
     if getattr(args, "ocr", False):
         cfg.ocr.enabled = True
 
@@ -90,7 +99,18 @@ def main(argv: Optional[List[str]] = None) -> None:
     pipeline = VideoPipeline(cfg)
     is_stream = args.command == "stream"
 
-    print(f"Traffik running '{args.command}' on '{args.source}'...")
+    print("================ Configuration ================")
+    print(f"Config File:      '{config_path}'")
+    print(f"Source Video:     '{args.source}'")
+    print(f"Target Video:     {repr(target_path) if target_path else 'Disabled (--no-save)'}")
+    print(f"Model Weights:    '{pipeline.detector.model_path}'")
+    print(f"Compute Device:   {pipeline.detector.device.upper()} (imgsz={cfg.detector.imgsz}, conf={cfg.detector.conf_threshold})")
+    print(f"Gate Line A:      {cfg.gate.line_a_start} -> {cfg.gate.line_a_end}")
+    print(f"Gate Line B:      {cfg.gate.line_b_start} -> {cfg.gate.line_b_end}")
+    print(f"License Plate OCR:{'Enabled' if cfg.ocr.enabled else 'Disabled'}")
+    print(f"Mode:             {'Interactive Stream GUI' if is_stream else 'Headless Batch Processing'}")
+    print("================================================\n")
+
     summary = pipeline.run(
         source_path=args.source,
         target_path=target_path,
