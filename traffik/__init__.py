@@ -14,6 +14,7 @@ from traffik.counting import DualLineGate, GateState
 from traffik.detection import VehicleDetector
 from traffik.ocr import PlateReader, PlateResult, clean_plate_text
 from traffik.pipeline import PipelineSummary, VideoPipeline, record_run_to_csv
+from traffik.speed import ViewTransformer
 from traffik.tracking import VehicleTracker
 from traffik.visualization import VisualAnnotator, draw_hud_banner
 
@@ -33,6 +34,7 @@ __all__ = [
     "VehicleDetector",
     "VehicleTracker",
     "VideoPipeline",
+    "ViewTransformer",
     "VisualAnnotator",
     "clean_plate_text",
     "draw_hud_banner",
