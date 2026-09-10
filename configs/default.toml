@@ -25,3 +25,11 @@ offset = 60
 enabled = false
 conf_threshold = 0.35
 output_csv = "number_plates.csv"
+
+[speed]
+enabled = false
+unit = "km/h"
+source_polygon = [[450, 600], [1450, 600], [2100, 1050], [100, 1050]]
+target_width = 7.5
+target_length = 25.0
+smoothing_window = 7

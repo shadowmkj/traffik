@@ -93,6 +93,19 @@ class OCRConfig:
 
 
 @dataclass
+class SpeedConfig:
+    """Speed estimation subsystem configuration."""
+    enabled: bool = False
+    unit: str = "km/h"
+    source_polygon: List[List[int]] = field(
+        default_factory=lambda: [[450, 600], [1450, 600], [2100, 1050], [100, 1050]]
+    )
+    target_width: float = 7.5
+    target_length: float = 25.0
+    smoothing_window: int = 7
+
+
+@dataclass
 class Config:
     """Root configuration object composing all subsystem configurations."""
     general: GeneralConfig = field(default_factory=GeneralConfig)
@@ -100,6 +113,7 @@ class Config:
     tracker: TrackerConfig = field(default_factory=TrackerConfig)
     gate: GateConfig = field(default_factory=GateConfig)
     ocr: OCRConfig = field(default_factory=OCRConfig)
+    speed: SpeedConfig = field(default_factory=SpeedConfig)
 
     @classmethod
     def from_toml(cls, path: str) -> "Config":
@@ -119,6 +133,7 @@ class Config:
         tracker_data = data.get("tracker", {})
         gate_data = data.get("gate", {})
         ocr_data = data.get("ocr", {})
+        speed_data = data.get("speed", {})
 
         return cls(
             general=GeneralConfig(**general_data),
@@ -126,4 +141,5 @@ class Config:
             tracker=TrackerConfig(**tracker_data),
             gate=GateConfig(**gate_data),
             ocr=OCRConfig(**ocr_data),
+            speed=SpeedConfig(**speed_data),
         )

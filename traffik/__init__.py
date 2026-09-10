@@ -6,6 +6,7 @@ from traffik.config import (
     GateConfig,
     GeneralConfig,
     OCRConfig,
+    SpeedConfig,
     TrackerConfig,
     get_device,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "PipelineSummary",
     "PlateReader",
     "PlateResult",
+    "SpeedConfig",
     "TrackerConfig",
     "VehicleDetector",
     "VehicleTracker",
