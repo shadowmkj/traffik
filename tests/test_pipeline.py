@@ -6,7 +6,7 @@ from typing import Generator
 import cv2
 import numpy as np
 import pytest
-from traffik import Config, OCRConfig, PipelineSummary, VideoPipeline
+from traffik import Config, OCRConfig, PipelineSummary, SpeedConfig, VideoPipeline
 from traffik.pipeline import PipelineSummary as PipelineSummaryFromMod
 from traffik.pipeline import VideoPipeline as VideoPipelineFromMod
 
@@ -84,6 +84,28 @@ def test_pipeline_instantiation_with_ocr(tmp_path: Path):
     assert pipeline.plate_reader is not None
 
 
+def test_pipeline_instantiation_with_speed():
+    """Verify VideoPipeline initializes SpeedEstimator when speed is enabled."""
+    cfg_disabled = Config()
+    pipeline_disabled = VideoPipeline(cfg_disabled)
+    assert pipeline_disabled.speed_estimator is None
+
+    cfg_enabled = Config(
+        speed=SpeedConfig(
+            enabled=True,
+            unit="km/h",
+            source_polygon=[[10, 10], [500, 10], [500, 400], [10, 400]],
+            target_width=10.0,
+            target_length=30.0,
+            smoothing_window=3,
+        )
+    )
+    pipeline_enabled = VideoPipeline(cfg_enabled)
+    assert pipeline_enabled.speed_estimator is not None
+    assert pipeline_enabled.speed_estimator.unit == "km/h"
+    assert pipeline_enabled.speed_estimator.window == 3
+
+
 def test_pipeline_run_nonexistent_source():
     """Verify VideoPipeline raises FileNotFoundError for missing source video."""
     cfg = Config()
@@ -139,6 +161,34 @@ def test_pipeline_run_with_ocr_enabled(synthetic_video: str, tmp_path: Path):
 
     assert isinstance(summary, PipelineSummary)
     assert summary.total_frames == 10
+
+
+def test_pipeline_run_with_speed_enabled(synthetic_video: str, tmp_path: Path):
+    """Verify VideoPipeline executes speed estimation and renders speed ROI polygon to output sink."""
+    target_path = str(tmp_path / "output_speed.mp4")
+    cfg = Config(
+        speed=SpeedConfig(
+            enabled=True,
+            unit="km/h",
+            source_polygon=[[50, 50], [550, 50], [600, 450], [40, 450]],
+            target_width=8.0,
+            target_length=20.0,
+            smoothing_window=2,
+        ),
+    )
+
+    pipeline = VideoPipeline(cfg)
+    assert pipeline.speed_estimator is not None
+
+    summary = pipeline.run(source_path=synthetic_video, target_path=target_path)
+
+    assert isinstance(summary, PipelineSummary)
+    assert summary.total_frames == 10
+    assert summary.target == target_path
+    assert os.path.exists(target_path)
+    assert os.path.getsize(target_path) > 0
+    assert pipeline.speed_estimator is not None
+    assert pipeline.speed_estimator.fps == 30.0
 
 
 def test_record_run_to_csv(tmp_path: Path):

@@ -39,6 +39,10 @@ ocr video="clips/clip_1.mp4" config="configs/default.toml":
 setup-gate video="clips/clip_4.mp4":
     uv run traffik setup-gate {{video}}
 
+# Launch interactive 4-point speed calibration ROI tool
+setup-speed-roi video="clips/clip_4.mp4":
+    uv run traffik setup-speed-roi {{video}}
+
 # ==============================================================================
 # Maintenance & Environment
 # ==============================================================================

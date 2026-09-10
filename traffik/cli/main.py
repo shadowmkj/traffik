@@ -34,6 +34,9 @@ def create_parser() -> argparse.ArgumentParser:
         "--ocr", action="store_true", help="Enable OCR license plate extraction"
     )
     p_proc.add_argument(
+        "--speed", action="store_true", help="Enable vehicle speed estimation"
+    )
+    p_proc.add_argument(
         "--no-save", action="store_true", help="Do not write output video to disk"
     )
 
@@ -51,6 +54,9 @@ def create_parser() -> argparse.ArgumentParser:
         "-m", "--model", default=None, help="Override YOLO model weights path (e.g. yolo11n.pt, yolov8m.pt)"
     )
     p_stream.add_argument(
+        "--speed", action="store_true", help="Enable vehicle speed estimation"
+    )
+    p_stream.add_argument(
         "--no-save", action="store_true", help="Do not write output video to disk"
     )
 
@@ -60,6 +66,22 @@ def create_parser() -> argparse.ArgumentParser:
         help="Launch interactive 4-point gate calibration tool",
     )
     p_gate.add_argument("source", help="Path to input video file")
+
+    # Setup speed ROI subcommand (Interactive perspective calibration)
+    p_speed_roi = subparsers.add_parser(
+        "setup-speed-roi",
+        help="Launch interactive 4-point speed ROI calibration tool",
+    )
+    p_speed_roi.add_argument("source", help="Path to input video file")
+    p_speed_roi.add_argument(
+        "-w", "--width", type=float, default=7.5, help="Road width in meters. Default: 7.5"
+    )
+    p_speed_roi.add_argument(
+        "-l", "--length", type=float, default=25.0, help="Road section length in meters. Default: 25.0"
+    )
+    p_speed_roi.add_argument(
+        "-u", "--unit", choices=["km/h", "mph"], default="km/h", help="Speed unit (km/h or mph). Default: km/h"
+    )
 
     return parser
 
@@ -79,6 +101,16 @@ def main(argv: Optional[List[str]] = None) -> None:
             setup_main()
         return
 
+    if args.command == "setup-speed-roi":
+        from traffik.speed.calibration import run_setup_speed_roi
+        run_setup_speed_roi(
+            args.source,
+            target_width=args.width,
+            target_length=args.length,
+            unit=args.unit,
+        )
+        return
+
     config_path = args.config if (args.config and os.path.exists(args.config)) else "configs/default.toml"
     cfg = Config.from_toml(config_path) if os.path.exists(config_path) else Config()
 
@@ -87,6 +119,9 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     if getattr(args, "ocr", False):
         cfg.ocr.enabled = True
+
+    if getattr(args, "speed", False):
+        cfg.speed.enabled = True
 
     base, ext = os.path.splitext(args.source)
     if args.no_save:
@@ -99,6 +134,12 @@ def main(argv: Optional[List[str]] = None) -> None:
     pipeline = VideoPipeline(cfg)
     is_stream = args.command == "stream"
 
+    speed_info = (
+        f"Enabled (unit={cfg.speed.unit}, polygon={cfg.speed.source_polygon})"
+        if cfg.speed.enabled
+        else "Disabled"
+    )
+
     print("================ Configuration ================")
     print(f"Config File:      '{config_path}'")
     print(f"Source Video:     '{args.source}'")
@@ -108,6 +149,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     print(f"Gate Line A:      {cfg.gate.line_a_start} -> {cfg.gate.line_a_end}")
     print(f"Gate Line B:      {cfg.gate.line_b_start} -> {cfg.gate.line_b_end}")
     print(f"License Plate OCR:{'Enabled' if cfg.ocr.enabled else 'Disabled'}")
+    print(f"Speed Estimation: {speed_info}")
     print(f"Mode:             {'Interactive Stream GUI' if is_stream else 'Headless Batch Processing'}")
     print("================================================\n")
 
