@@ -63,6 +63,63 @@ def test_tracker_get_labels():
     assert labels == ["car #1", "truck #2"]
 
 
+def test_tracker_get_labels_with_speeds():
+    """Verify label generation formats speed readout '<smoothed_class> #<tracker_id> | <speed> <unit>'."""
+    cfg = TrackerConfig()
+    tracker = VehicleTracker(cfg, fps=30)
+
+    xyxy = np.array([[10, 10, 50, 50], [60, 60, 100, 100]], dtype=np.float32)
+    confidence = np.array([0.92, 0.85], dtype=np.float32)
+    class_id = np.array([2, 7], dtype=int)
+    tracker_id = np.array([1, 2], dtype=int)
+
+    detections = sv.Detections(
+        xyxy=xyxy,
+        confidence=confidence,
+        class_id=class_id,
+        tracker_id=tracker_id,
+    )
+    class_names = {2: "car", 7: "truck"}
+    speeds = {1: 54.2}
+
+    labels = tracker.get_labels(
+        detections,
+        class_names=class_names,
+        speeds=speeds,
+        speed_unit="km/h",
+    )
+    assert labels == ["car #1 | 54 km/h", "truck #2"]
+
+
+def test_tracker_get_labels_with_mph():
+    """Verify label generation supports alternate speed units such as mph."""
+    cfg = TrackerConfig()
+    tracker = VehicleTracker(cfg, fps=30)
+
+    xyxy = np.array([[10, 10, 50, 50]], dtype=np.float32)
+    confidence = np.array([0.92], dtype=np.float32)
+    class_id = np.array([2], dtype=int)
+    tracker_id = np.array([1], dtype=int)
+
+    detections = sv.Detections(
+        xyxy=xyxy,
+        confidence=confidence,
+        class_id=class_id,
+        tracker_id=tracker_id,
+    )
+    class_names = {2: "car"}
+    speeds = {1: 34.8}
+
+    labels = tracker.get_labels(
+        detections,
+        class_names=class_names,
+        speeds=speeds,
+        speed_unit="mph",
+    )
+    assert labels == ["car #1 | 35 mph"]
+
+
+
 def test_tracker_get_labels_without_tracker_id():
     """Verify get_labels safely handles detections without tracker IDs."""
     cfg = TrackerConfig()

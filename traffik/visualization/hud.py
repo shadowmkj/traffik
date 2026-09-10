@@ -91,18 +91,35 @@ class VisualAnnotator:
         detections: sv.Detections,
         labels: Optional[List[str]] = None,
         gate: Optional[DualLineGate] = None,
+        speed_polygon: Optional[np.ndarray] = None,
     ) -> np.ndarray:
-        """Annotate a frame with detections, labels, gate lines, and HUD.
+        """Annotate a frame with detections, labels, gate lines, HUD, and speed ROI.
 
         Args:
             frame: Input video frame (BGR).
             detections: Supervision detections containing bounding boxes.
-            labels: Optional formatted strings for vehicle class and track ID.
+            labels: Optional formatted strings for vehicle class, track ID, and speed.
             gate: Optional DualLineGate to draw Line A, Line B, and counter HUD.
+            speed_polygon: Optional 4-point quadrilateral defining the speed ROI.
 
         Returns:
             Annotated frame.
         """
+        # Render translucent speed calibration ROI polygon on base frame layer
+        if speed_polygon is not None and len(speed_polygon) == 4:
+            poly = np.asarray(speed_polygon, dtype=np.int32).reshape((-1, 1, 2))
+            overlay = frame.copy()
+            cv2.fillPoly(overlay, [poly], (0, 220, 100))
+            cv2.addWeighted(overlay, 0.20, frame, 0.80, 0, frame)
+            cv2.polylines(
+                frame,
+                [poly],
+                isClosed=True,
+                color=(0, 255, 120),
+                thickness=2,
+                lineType=cv2.LINE_AA,
+            )
+
         annotated = self.box_annotator.annotate(scene=frame, detections=detections)
         if labels:
             annotated = self.label_annotator.annotate(
@@ -117,3 +134,4 @@ class VisualAnnotator:
             )
             annotated = draw_hud_banner(annotated, gate.in_count, gate.out_count)
         return annotated
+
