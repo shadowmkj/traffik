@@ -15,10 +15,17 @@ lost_track_buffer = 45
 minimum_matching_threshold = 0.75
 
 [gate]
-line_a_start = [49, 1287]
-line_a_end   = [1881, 816]
-line_b_start = [101, 1458]
-line_b_end   = [2381, 797]
+# Footage 1
+# line_a_start = [49, 1287]
+# line_a_end   = [1881, 816]
+# line_b_start = [101, 1458]
+# line_b_end   = [2381, 797]
+
+# Footage 2
+line_a_start = [980, 0]
+line_a_end   = [1021, 1079]
+line_b_start = [821, 0]
+line_b_end   = [851, 1079]
 offset = 60
 
 [ocr]

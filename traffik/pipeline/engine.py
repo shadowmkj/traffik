@@ -71,7 +71,7 @@ def record_run_to_csv(
 
     with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([file_name, run_number, in_count, out_count])
+        writer.writerow([file_name, run_number, in_count, out_count, ",,"])
 
     return run_number
 
@@ -269,7 +269,8 @@ class VideoPipeline:
                         labels=labels,
                         gate=self.gate,
                         speed_polygon=(
-                            np.array(self.config.speed.source_polygon, dtype=np.int32)
+                            np.array(self.config.speed.source_polygon,
+                                     dtype=np.int32)
                             if self.config.speed.enabled
                             else None
                         ),
@@ -297,7 +298,8 @@ class VideoPipeline:
         run_number: Optional[int] = None
         if self.config.general.outputs_csv:
             is_pytest = "PYTEST_CURRENT_TEST" in os.environ
-            is_default_output = os.path.abspath(self.config.general.outputs_csv) == os.path.abspath("outputs.csv")
+            is_default_output = os.path.abspath(
+                self.config.general.outputs_csv) == os.path.abspath("outputs.csv")
             if not (is_pytest and is_default_output):
                 try:
                     run_number = record_run_to_csv(
@@ -308,7 +310,8 @@ class VideoPipeline:
                     )
                 except Exception as e:
                     print(
-                        f"[Traffik Pipeline] Warning: Could not write run metrics to '{self.config.general.outputs_csv}': {e}"
+                        f"[Traffik Pipeline] Warning: Could not write run metrics to '{
+                            self.config.general.outputs_csv}': {e}"
                     )
 
         return PipelineSummary(

@@ -263,3 +263,32 @@ def test_main_wrapper(mock_exists, mock_pipeline_cls, mock_summary):
 def test_setup_line_wrapper(mock_run_setup_gate):
     setup_line_wrapper.main(["calibrate.mp4"])
     mock_run_setup_gate.assert_called_once_with("calibrate.mp4")
+
+
+@patch("traffik.utils.video_cutter.cut_video_segment")
+def test_cli_main_cut_clip_dispatch(mock_cut_video_segment):
+    main(["cut-clip", "source.mp4", "-s", "01:00", "-e", "02:30", "-o", "custom_clip.mp4", "--accurate"])
+    mock_cut_video_segment.assert_called_once_with(
+        source_video_path="source.mp4",
+        start="01:00",
+        end="02:30",
+        output_name="custom_clip.mp4",
+        output_dir=".",
+        clips_file="clips.txt",
+        accurate=True,
+    )
+
+
+@patch("cut_clip.cut_video_segment")
+def test_cut_clip_wrapper(mock_cut_video_segment):
+    import cut_clip
+    cut_clip.main(["source.mp4", "--start", "05:00", "--end", "06:30"])
+    mock_cut_video_segment.assert_called_once_with(
+        source_video_path="source.mp4",
+        start="05:00",
+        end="06:30",
+        output_name=None,
+        output_dir=".",
+        clips_file="clips.txt",
+        accurate=False,
+    )

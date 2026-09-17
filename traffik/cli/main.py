@@ -83,6 +83,19 @@ def create_parser() -> argparse.ArgumentParser:
         "-u", "--unit", choices=["km/h", "mph"], default="km/h", help="Speed unit (km/h or mph). Default: km/h"
     )
 
+    # Cut clip subcommand (FFmpeg segment cutting & clips.txt recorder)
+    p_cut = subparsers.add_parser(
+        "cut-clip",
+        help="Cut video segments using FFmpeg and record in clips.txt",
+    )
+    p_cut.add_argument("source", help="Path to source video file")
+    p_cut.add_argument("-s", "--start", required=True, help="Start timestamp (MM:SS, HH:MM:SS, or seconds)")
+    p_cut.add_argument("-e", "--end", required=True, help="End timestamp (MM:SS, HH:MM:SS, or seconds)")
+    p_cut.add_argument("-o", "--output", default=None, help="Output clip filename (default: auto clip_N.mp4)")
+    p_cut.add_argument("-d", "--dir", default=".", help="Output directory (default: current directory)")
+    p_cut.add_argument("-c", "--clips-file", default="clips.txt", help="Registry file (default: clips.txt)")
+    p_cut.add_argument("--accurate", action="store_true", help="Re-encode for frame-accurate cut")
+
     return parser
 
 
@@ -90,6 +103,20 @@ def main(argv: Optional[List[str]] = None) -> None:
     """Main CLI entrypoint. Parses arguments and executes the appropriate pipeline or tool."""
     parser = create_parser()
     args = parser.parse_args(argv)
+
+    if args.command == "cut-clip":
+        from traffik.utils.video_cutter import cut_video_segment
+        out_path = cut_video_segment(
+            source_video_path=args.source,
+            start=args.start,
+            end=args.end,
+            output_name=args.output,
+            output_dir=args.dir,
+            clips_file=args.clips_file,
+            accurate=args.accurate,
+        )
+        print(f"\n[Success] Clip created at: {out_path}")
+        return
 
     if args.command == "setup-gate":
         try:
