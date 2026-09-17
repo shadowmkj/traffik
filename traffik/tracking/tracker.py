@@ -75,15 +75,20 @@ class VehicleTracker:
         self,
         detections: sv.Detections,
         class_names: Optional[Dict[int, str]] = None,
+        speeds: Optional[Dict[int, float]] = None,
+        speed_unit: str = "km/h",
     ) -> List[str]:
-        """Record class votes and generate formatted visualization labels.
+        """Record class votes and generate formatted visualization labels with optional speed.
 
         Args:
             detections: Tracked detections (must contain tracker_id).
             class_names: Mapping of numeric class IDs to string class names.
+            speeds: Optional mapping of tracker_id to estimated velocity.
+            speed_unit: Unit suffix for speed readout (e.g., 'km/h' or 'mph').
 
         Returns:
-            List of formatted labels like '<smoothed_class> #<tracker_id>' for each detection.
+            List of formatted labels like '<smoothed_class> #<tracker_id>' or
+            '<smoothed_class> #<tracker_id> | <speed> <unit>' for each detection.
         """
         labels: List[str] = []
         if detections.tracker_id is None:
@@ -115,6 +120,11 @@ class VehicleTracker:
             smoothed_class = self.get_smoothed_class(
                 tracker_id_int, fallback=raw_class
             )
-            labels.append(f"{smoothed_class} #{tracker_id_int}")
+            label = f"{smoothed_class} #{tracker_id_int}"
+            if speeds and tracker_id_int in speeds:
+                speed_val = speeds[tracker_id_int]
+                label += f" | {int(round(speed_val))} {speed_unit}"
+            labels.append(label)
 
         return labels
+

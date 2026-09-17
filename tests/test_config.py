@@ -8,6 +8,7 @@ from traffik.config import (
     TrackerConfig,
     GateConfig,
     OCRConfig,
+    SpeedConfig,
     get_device,
 )
 
@@ -23,6 +24,16 @@ def test_get_device_explicit():
     assert get_device("mps") == "mps"
 
 
+def test_speed_config_defaults():
+    speed_cfg = SpeedConfig()
+    assert speed_cfg.enabled is False
+    assert speed_cfg.unit == "km/h"
+    assert speed_cfg.source_polygon == [[450, 600], [1450, 600], [2100, 1050], [100, 1050]]
+    assert speed_cfg.target_width == 7.5
+    assert speed_cfg.target_length == 25.0
+    assert speed_cfg.smoothing_window == 7
+
+
 def test_config_defaults():
     cfg = Config()
     assert isinstance(cfg.general, GeneralConfig)
@@ -30,12 +41,15 @@ def test_config_defaults():
     assert isinstance(cfg.tracker, TrackerConfig)
     assert isinstance(cfg.gate, GateConfig)
     assert isinstance(cfg.ocr, OCRConfig)
+    assert isinstance(cfg.speed, SpeedConfig)
     assert cfg.general.device == "auto"
     assert cfg.general.outputs_csv == "outputs.csv"
     assert cfg.detector.model_path == "yolo11n.pt"
     assert cfg.tracker.lost_track_buffer == 45
     assert cfg.gate.offset == 60
     assert cfg.ocr.enabled is False
+    assert cfg.speed.enabled is False
+    assert cfg.speed.unit == "km/h"
 
 
 def test_default_toml_file():
@@ -50,6 +64,12 @@ def test_default_toml_file():
     assert cfg.gate.line_a_start == [49, 1287]
     assert cfg.gate.line_b_end == [2381, 797]
     assert cfg.ocr.enabled is False
+    assert cfg.speed.enabled is False
+    assert cfg.speed.unit == "km/h"
+    assert cfg.speed.source_polygon == [[450, 600], [1450, 600], [2100, 1050], [100, 1050]]
+    assert cfg.speed.target_width == 7.5
+    assert cfg.speed.target_length == 25.0
+    assert cfg.speed.smoothing_window == 7
 
 
 def test_load_config():
@@ -80,6 +100,14 @@ def test_load_config():
     enabled = false
     conf_threshold = 0.35
     output_csv = "plates.csv"
+
+    [speed]
+    enabled = true
+    unit = "mph"
+    source_polygon = [[100, 200], [300, 200], [350, 400], [50, 400]]
+    target_width = 10.0
+    target_length = 30.0
+    smoothing_window = 5
     """
     with tempfile.NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
         f.write(toml_content)
@@ -105,5 +133,11 @@ def test_load_config():
         assert cfg.ocr.enabled is False
         assert cfg.ocr.conf_threshold == 0.35
         assert cfg.ocr.output_csv == "plates.csv"
+        assert cfg.speed.enabled is True
+        assert cfg.speed.unit == "mph"
+        assert cfg.speed.source_polygon == [[100, 200], [300, 200], [350, 400], [50, 400]]
+        assert cfg.speed.target_width == 10.0
+        assert cfg.speed.target_length == 30.0
+        assert cfg.speed.smoothing_window == 5
     finally:
         os.remove(temp_path)

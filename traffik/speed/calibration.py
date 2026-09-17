@@ -1,16 +1,3 @@
-"""Interactive Dual-Line Gate Setup Tool.
-
-Click 4 points to define entry line (Line A) and exit line (Line B) on a video frame.
-
-Controls (works both in GUI window and Terminal):
-  • Left Mouse Click : Select point coordinates (A1 -> A2 -> B1 -> B2)
-  • 'f' / 'F'        : Toggle Fullscreen / Windowed mode
-  • 'u' / Backspace  : Undo last clicked point
-  • 'r' / 'R'        : Reset all points
-  • 'q' / ESC / Enter: Save coordinates and exit
-"""
-
-import argparse
 import contextlib
 import os
 import select
@@ -47,10 +34,7 @@ def activate_window_focus() -> None:
 
 @contextlib.contextmanager
 def raw_terminal_input():
-    """Context manager to enable non-blocking single-keypress reads from the terminal.
-
-    Allows keys pressed in terminal to register even if the GUI window lost focus.
-    """
+    """Context manager to enable non-blocking single-keypress reads from the terminal."""
     is_tty = False
     old_settings = None
     fd = None
@@ -90,55 +74,81 @@ def raw_terminal_input():
 
 
 # ==============================================================================
-# CLI Argument Parsing
+# TOML Block Formatting
 # ==============================================================================
 
-def parse_args(argv=None) -> argparse.Namespace:
-    """Parse command line arguments for gate calibration."""
-    parser = argparse.ArgumentParser(
-        description="Interactive Dual-Line Gate Setup Tool (Click 4 points to define Line A and Line B)."
+def format_speed_toml_block(
+    points: List[List[int]],
+    target_width: float = 7.5,
+    target_length: float = 25.0,
+    unit: str = "km/h",
+) -> str:
+    """Format a copy-pasteable TOML configuration block for speed estimation.
+
+    Parameters
+    ----------
+    points : List[List[int]]
+        4 corner pixel coordinates in order: [Top-Left, Top-Right, Bottom-Right, Bottom-Left].
+    target_width : float
+        Physical width of the ROI in meters across the road.
+    target_length : float
+        Physical length of the ROI in meters along the road.
+    unit : str
+        Measurement unit ('km/h' or 'mph').
+
+    Returns
+    -------
+    str
+        Formatted TOML block suitable for pasting into configs/default.toml.
+    """
+    pts_int = [[int(pt[0]), int(pt[1])] for pt in points]
+    formatted_pts = ", ".join(f"[{p[0]}, {p[1]}]" for p in pts_int)
+    return (
+        f"[speed]\n"
+        f"enabled = true\n"
+        f'unit = "{unit}"\n'
+        f"source_polygon = [{formatted_pts}]\n"
+        f"target_width = {float(target_width)}\n"
+        f"target_length = {float(target_length)}\n"
+        f"smoothing_window = 7"
     )
-    parser.add_argument(
-        "source",
-        nargs="?",
-        default="clip_4.mp4"
-        if os.path.exists("clip_4.mp4")
-        else ("traffic.mp4" if os.path.exists("traffic.mp4") else "clip.mp4"),
-        help="Path to source video file (e.g. clip_4.mp4). Default: clip_4.mp4",
-    )
-    parser.add_argument(
-        "--no-fullscreen",
-        action="store_true",
-        help="Start in windowed mode instead of fullscreen (can still be toggled with 'f')",
-    )
-    return parser.parse_args(argv)
 
 
 # ==============================================================================
-# Gate Calibration Engine
+# Interactive OpenCV Calibration GUI
 # ==============================================================================
 
-def run_setup_gate(
+def run_setup_speed_roi(
     source_video_path: str,
+    target_width: float = 7.5,
+    target_length: float = 25.0,
+    unit: str = "km/h",
+    preview_output_path: str = "speed_roi_preview.jpg",
     fullscreen: bool = True,
-    preview_output_path: str = "gate_preview.jpg",
-) -> Optional[dict]:
-    """Run interactive 4-point gate calibration on the first frame of a video.
+) -> Optional[str]:
+    """Run interactive 4-point speed ROI calibration on the first frame of a video.
 
     Parameters
     ----------
     source_video_path : str
         Path to source video file.
-    fullscreen : bool
-        Whether to open the window in fullscreen mode by default (default: True).
+    target_width : float
+        Real-world metric width in meters (default: 7.5m).
+    target_length : float
+        Real-world metric length in meters (default: 25.0m).
+    unit : str
+        Speed unit ('km/h' or 'mph', default: 'km/h').
     preview_output_path : str
-        Filepath to save the calibrated gate preview image.
+        Filepath to save the calibrated ROI preview image.
+    fullscreen : bool
+        Whether to start in fullscreen mode (default: True).
 
     Returns
     -------
-    Optional[dict]
-        Dictionary with coordinates if 4 points were selected, None otherwise.
+    Optional[str]
+        Formatted TOML string if 4 points were selected, None otherwise.
     """
+    # Verify file existence before opening video streams
     if not os.path.exists(source_video_path):
         print(f"Error: Video file '{source_video_path}' not found.")
         return None
@@ -153,21 +163,34 @@ def run_setup_gate(
 
     h, w, _ = base_frame.shape
 
+    # Display console instructions and metadata
     print("==================================================")
-    print(f"Dual-Line Gate Calibration: '{source_video_path}' ({w}x{h})")
+    print(f"Speed ROI Calibration: '{source_video_path}' ({w}x{h})")
+    print(f"Target Dimensions: {target_width}m (width) x {target_length}m (length), Unit: {unit}")
     print("--------------------------------------------------")
     print("INSTRUCTIONS:")
-    print(" 1. Click 2 points for Line A (Entry Line - Cyan: A1 -> A2)")
-    print(" 2. Click 2 points for Line B (Exit Line  - Orange: B1 -> B2)")
-    print(" CONTROLS (GUI or Terminal):")
+    print(" Click 4 points in clockwise order on the road surface:")
+    print("  1. Top-Left     (Far Left road boundary / lane line)")
+    print("  2. Top-Right    (Far Right road boundary / lane line)")
+    print("  3. Bottom-Right (Near Right road boundary / lane line)")
+    print("  4. Bottom-Left  (Near Left road boundary / lane line)")
+    print(" CONTROLS:")
     print("  • 'f' / 'F'        : Toggle Fullscreen / Windowed")
     print("  • 'u' / Backspace  : Undo last point")
     print("  • 'r' / 'R'        : Reset points")
     print("  • 'q' / ESC / Enter: Save and exit")
     print("==================================================\n")
 
+    point_labels = [
+        ("P1: Top-Left (Far Left)", (255, 255, 0)),        # Cyan / Yellow
+        ("P2: Top-Right (Far Right)", (255, 255, 0)),      # Cyan / Yellow
+        ("P3: Bottom-Right (Near Right)", (0, 165, 255)),  # Orange
+        ("P4: Bottom-Left (Near Left)", (0, 165, 255)),    # Orange
+    ]
+
     points: List[Tuple[int, int]] = []
     display_frame = base_frame.copy()
+    generated_toml: Optional[str] = None
     is_fullscreen = bool(fullscreen)
 
     def redraw() -> None:
@@ -176,22 +199,17 @@ def run_setup_gate(
 
         # Step instruction text for top banner
         if len(points) == 0:
-            step_text = "Step 1/4: Click START for Line A (Entry Line - A1)"
-            step_color = (255, 255, 0)
+            step_text = "Step 1/4: Click Top-Left (Far Left)"
         elif len(points) == 1:
-            step_text = "Step 2/4: Click END for Line A (Entry Line - A2)"
-            step_color = (255, 255, 0)
+            step_text = "Step 2/4: Click Top-Right (Far Right)"
         elif len(points) == 2:
-            step_text = "Step 3/4: Click START for Line B (Exit Line - B1)"
-            step_color = (0, 165, 255)
+            step_text = "Step 3/4: Click Bottom-Right (Near Right)"
         elif len(points) == 3:
-            step_text = "Step 4/4: Click END for Line B (Exit Line - B2)"
-            step_color = (0, 165, 255)
+            step_text = "Step 4/4: Click Bottom-Left (Near Left)"
         else:
-            step_text = "Gate Defined! Press [Q / ESC / Enter] to Save & Exit (or 'r' to reset)"
-            step_color = (0, 255, 120)
+            step_text = "Speed ROI Defined! Press [Q / ESC / Enter] to Save & Exit (or 'r' to reset)"
 
-        # Top Banner HUD
+        # Draw top banner HUD
         cv2.rectangle(display_frame, (0, 0), (w, 55), (20, 20, 20), -1)
         cv2.putText(
             display_frame,
@@ -199,12 +217,12 @@ def run_setup_gate(
             (20, 36),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.85,
-            step_color,
+            (0, 255, 255),
             2,
             cv2.LINE_AA,
         )
 
-        # Bottom Controls HUD
+        # Draw bottom controls HUD
         cv2.rectangle(display_frame, (0, h - 40), (w, h), (20, 20, 20), -1)
         controls_text = "[F] Fullscreen  |  [U/Bksp] Undo  |  [R] Reset  |  [Q/ESC/Enter] Save & Exit"
         cv2.putText(
@@ -218,71 +236,43 @@ def run_setup_gate(
             cv2.LINE_AA,
         )
 
-        # Draw Line A (Points 0 & 1)
-        if len(points) >= 1:
-            cv2.circle(display_frame, points[0], 7, (255, 255, 0), -1)
-            cv2.circle(display_frame, points[0], 9, (0, 0, 0), 2)
+        # Draw points and connecting lines
+        for idx, pt in enumerate(points):
+            label_text, color = point_labels[idx]
+            cv2.circle(display_frame, pt, 7, color, -1)
+            cv2.circle(display_frame, pt, 9, (0, 0, 0), 2)
             cv2.putText(
                 display_frame,
-                "A1 (Entry Start)",
-                (points[0][0] + 12, points[0][1] - 8),
+                label_text,
+                (pt[0] + 12, pt[1] - 8),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
-                (255, 255, 0),
+                0.6,
+                color,
                 2,
                 cv2.LINE_AA,
             )
+
+        # Draw line P1 -> P2 (Far road boundary)
         if len(points) >= 2:
-            cv2.circle(display_frame, points[1], 7, (255, 255, 0), -1)
-            cv2.circle(display_frame, points[1], 9, (0, 0, 0), 2)
-            cv2.putText(
-                display_frame,
-                "A2 (Entry End)",
-                (points[1][0] + 12, points[1][1] - 8),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
-                (255, 255, 0),
-                2,
-                cv2.LINE_AA,
-            )
-            cv2.line(display_frame, points[0], points[1], (255, 255, 0), 3, cv2.LINE_AA)
+            cv2.line(display_frame, points[0], points[1], (255, 255, 0), 2, cv2.LINE_AA)
 
-        # Draw Line B (Points 2 & 3)
+        # Draw line P2 -> P3 (Right road boundary)
         if len(points) >= 3:
-            cv2.circle(display_frame, points[2], 7, (0, 165, 255), -1)
-            cv2.circle(display_frame, points[2], 9, (0, 0, 0), 2)
-            cv2.putText(
-                display_frame,
-                "B1 (Exit Start)",
-                (points[2][0] + 12, points[2][1] - 8),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
-                (0, 165, 255),
-                2,
-                cv2.LINE_AA,
-            )
-        if len(points) >= 4:
-            cv2.circle(display_frame, points[3], 7, (0, 165, 255), -1)
-            cv2.circle(display_frame, points[3], 9, (0, 0, 0), 2)
-            cv2.putText(
-                display_frame,
-                "B2 (Exit End)",
-                (points[3][0] + 12, points[3][1] - 8),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
-                (0, 165, 255),
-                2,
-                cv2.LINE_AA,
-            )
-            cv2.line(display_frame, points[2], points[3], (0, 165, 255), 3, cv2.LINE_AA)
+            cv2.line(display_frame, points[1], points[2], (0, 200, 255), 2, cv2.LINE_AA)
 
-            # Shade the buffer zone between Line A and Line B
-            poly = np.array([points[0], points[1], points[3], points[2]], dtype=np.int32)
+        # Draw line P3 -> P4 and P4 -> P1 (Near road boundary and Left road boundary)
+        if len(points) == 4:
+            cv2.line(display_frame, points[2], points[3], (0, 165, 255), 2, cv2.LINE_AA)
+            cv2.line(display_frame, points[3], points[0], (0, 200, 255), 2, cv2.LINE_AA)
+
+            # Draw translucent green ROI fill overlay
+            poly = np.array(points, dtype=np.int32)
             overlay = display_frame.copy()
             cv2.fillPoly(overlay, [poly], (0, 220, 100))
-            cv2.addWeighted(overlay, 0.28, display_frame, 0.72, 0, display_frame)
+            cv2.addWeighted(overlay, 0.25, display_frame, 0.75, 0, display_frame)
 
     def mouse_callback(event: int, x: int, y: int, flags: int, param: object) -> None:
+        nonlocal generated_toml
         if event == cv2.EVENT_LBUTTONDOWN:
             if len(points) < 4:
                 points.append((x, y))
@@ -290,16 +280,20 @@ def run_setup_gate(
                 redraw()
 
                 if len(points) == 4:
+                    pts_list = [[p[0], p[1]] for p in points]
+                    generated_toml = format_speed_toml_block(
+                        points=pts_list,
+                        target_width=target_width,
+                        target_length=target_length,
+                        unit=unit,
+                    )
                     print("\n=======================================================")
-                    print("COPY THESE COORDINATES INTO configs/default.toml:")
+                    print("COPY THIS CONFIGURATION INTO configs/default.toml:")
                     print("-------------------------------------------------------")
-                    print(f"line_a_start = [{points[0][0]}, {points[0][1]}]")
-                    print(f"line_a_end   = [{points[1][0]}, {points[1][1]}]")
-                    print(f"line_b_start = [{points[2][0]}, {points[2][1]}]")
-                    print(f"line_b_end   = [{points[3][0]}, {points[3][1]}]")
+                    print(generated_toml)
                     print("=======================================================\n")
 
-    window_name = f"Dual-Line Gate Setup - {os.path.basename(source_video_path)}"
+    window_name = f"Speed ROI Setup - {os.path.basename(source_video_path)}"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
 
     def set_win_fullscreen(enabled: bool) -> None:
@@ -355,13 +349,15 @@ def run_setup_gate(
             # Reset: 'r', 'R'
             elif char == "r":
                 points.clear()
-                print("Points reset. Ready to redraw from Step 1.")
+                generated_toml = None
+                print("Points reset. Ready to redraw.")
                 redraw()
 
             # Undo: 'u', 'U', 'z', 'Z', Backspace (8 or 127)
             elif char in ("u", "z") or key in (8, 127):
                 if points:
                     undone = points.pop()
+                    generated_toml = None
                     print(f"Undid point {len(points) + 1} {undone}. Remaining: {len(points)}/4")
                     redraw()
                 else:
@@ -377,29 +373,12 @@ def run_setup_gate(
                     print("Switched to WINDOWED mode.")
                 redraw()
 
-    result = None
+    # Save preview image if 4 points were selected
     if len(points) == 4:
         cv2.imwrite(preview_output_path, display_frame)
-        print(f"Saved gate preview image to '{preview_output_path}'.")
-        result = {
-            "line_a_start": [points[0][0], points[0][1]],
-            "line_a_end": [points[1][0], points[1][1]],
-            "line_b_start": [points[2][0], points[2][1]],
-            "line_b_end": [points[3][0], points[3][1]],
-        }
+        print(f"Saved preview image to '{preview_output_path}'.")
 
     cv2.destroyAllWindows()
-    return result
+    return generated_toml
 
 
-def main(argv=None) -> None:
-    """CLI entrypoint for standalone gate setup."""
-    args = parse_args(argv)
-    if args.no_fullscreen:
-        run_setup_gate(args.source, fullscreen=False)
-    else:
-        run_setup_gate(args.source)
-
-
-if __name__ == "__main__":
-    main()

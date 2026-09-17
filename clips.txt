@@ -1,3 +1,14 @@
-clip.mp4 | 30:00 | 35:00
-clip_1.mp4 | 48:10 | 50:40
-clip_2.mp4 | 52:57 | 54:40
+clip_name    |  source         |  start  |  end
+clip_1.mp4   |  footage_1.mp4  |  48:10  |  50:40
+clip_2.mp4   |  footage_1.mp4  |  52:57  |  54:40
+clip_3.mp4   |  footage_1.mp4  |  09:05  |  11:05
+clip_4.mp4   |  footage_1.mp4  |  02:00  |  03:30
+clip_5.mp4   |  footage_1.mp4  |  00:15  |  02:15
+clip_6.mp4   |  footage_1.mp4  |  30:00  |  35:00
+clip_7.mp4   |  footage_1.mp4  |  37:17  |  38:47
+clip_8.mp4   |  footage_1.mp4  |  40:00  |  41:30
+clip_9.mp4   |  footage_1.mp4  |  45:00  |  47:00
+clip_10.mp4  |  footage_1.mp4  |  04:00  |  05:00
+clip_11.mp4  |  footage_2.mp4  |  00:00  |  01:00
+clip_12.mp4  |  footage_2.mp4  |  09:00  |  10:00
+clip_13.mp4  |  footage_2.mp4  |  02:00  |  04:00

@@ -80,3 +80,61 @@ def test_visual_annotator_annotate_with_gate_and_labels():
     assert isinstance(out, np.ndarray)
     # Ensure drawing happened on the frame
     assert np.any(out > 0)
+
+
+def test_visual_annotator_annotate_with_speed_polygon():
+    """Verify speed calibration polygon is rendered onto the frame without errors."""
+    annotator = VisualAnnotator()
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    detections = sv.Detections(
+        xyxy=np.array([[20, 20, 40, 40]]),
+        confidence=np.array([0.95]),
+        class_id=np.array([2]),
+        tracker_id=np.array([1]),
+    )
+    labels = ["car #1 | 54 km/h"]
+    speed_polygon = np.array([[50, 50], [200, 50], [220, 300], [30, 300]])
+
+    out = annotator.annotate(
+        frame=frame,
+        detections=detections,
+        labels=labels,
+        speed_polygon=speed_polygon,
+    )
+    assert out.shape == (480, 640, 3)
+    assert isinstance(out, np.ndarray)
+    assert np.any(out > 0)
+
+
+def test_visual_annotator_annotate_with_gate_and_speed_polygon():
+    """Verify combined rendering of gate lines, counter HUD banner, and speed polygon."""
+    annotator = VisualAnnotator()
+    frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    gate_cfg = GateConfig(
+        line_a_start=[10, 50],
+        line_a_end=[200, 50],
+        line_b_start=[10, 100],
+        line_b_end=[200, 100],
+    )
+    gate = DualLineGate.from_config(gate_cfg)
+
+    detections = sv.Detections(
+        xyxy=np.array([[20, 20, 40, 40]]),
+        confidence=np.array([0.95]),
+        class_id=np.array([2]),
+        tracker_id=np.array([1]),
+    )
+    labels = ["car #1 | 62 km/h"]
+    speed_poly = np.array([[50, 50], [200, 50], [220, 300], [30, 300]])
+
+    out = annotator.annotate(
+        frame=frame,
+        detections=detections,
+        labels=labels,
+        gate=gate,
+        speed_polygon=speed_poly,
+    )
+    assert out.shape == (480, 640, 3)
+    assert isinstance(out, np.ndarray)
+    assert np.any(out > 0)
+

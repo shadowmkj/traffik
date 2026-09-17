@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "easyocr>=1.7.2",
+    "matplotlib>=3.11.1",
+    "numpy>=2.5.1",
     "opencv-python>=5.0.0.93",
+    "pandas>=3.0.5",
     "supervision>=0.29.1",
     "ultralytics>=8.4.112",
 ]

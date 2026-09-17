@@ -36,6 +36,7 @@ def test_cli_process_arg_parsing():
     assert args.output is None
     assert args.config == "configs/default.toml"
     assert args.ocr is False
+    assert args.speed is False
     assert args.no_save is False
 
     args_custom = parser.parse_args([
@@ -43,6 +44,7 @@ def test_cli_process_arg_parsing():
         "-o", "custom_out.mp4",
         "-c", "custom_cfg.toml",
         "--ocr",
+        "--speed",
         "--no-save"
     ])
     assert args_custom.command == "process"
@@ -50,6 +52,7 @@ def test_cli_process_arg_parsing():
     assert args_custom.output == "custom_out.mp4"
     assert args_custom.config == "custom_cfg.toml"
     assert args_custom.ocr is True
+    assert args_custom.speed is True
     assert args_custom.no_save is True
 
 
@@ -59,17 +62,20 @@ def test_cli_stream_arg_parsing():
     assert args.command == "stream"
     assert args.source == "stream.mp4"
     assert args.output is None
+    assert args.speed is False
     assert args.no_save is False
 
     args_custom = parser.parse_args([
         "stream", "stream.mp4",
         "-o", "stream_out.mp4",
         "-c", "custom.toml",
+        "--speed",
         "--no-save"
     ])
     assert args_custom.command == "stream"
     assert args_custom.output == "stream_out.mp4"
     assert args_custom.config == "custom.toml"
+    assert args_custom.speed is True
     assert args_custom.no_save is True
 
 
@@ -78,6 +84,26 @@ def test_cli_setup_gate_arg_parsing():
     args = parser.parse_args(["setup-gate", "calibrate.mp4"])
     assert args.command == "setup-gate"
     assert args.source == "calibrate.mp4"
+
+
+def test_cli_setup_speed_roi_arg_parsing():
+    parser = create_parser()
+    args = parser.parse_args(["setup-speed-roi", "calibrate.mp4"])
+    assert args.command == "setup-speed-roi"
+    assert args.source == "calibrate.mp4"
+    assert args.width == 7.5
+    assert args.length == 25.0
+    assert args.unit == "km/h"
+
+    args_custom = parser.parse_args([
+        "setup-speed-roi", "calibrate.mp4",
+        "-w", "10.0",
+        "-l", "30.0",
+        "-u", "mph"
+    ])
+    assert args_custom.width == 10.0
+    assert args_custom.length == 30.0
+    assert args_custom.unit == "mph"
 
 
 def test_cli_help_flags(capsys):
@@ -98,6 +124,10 @@ def test_cli_help_flags(capsys):
         parser.parse_args(["setup-gate", "--help"])
     assert excinfo.value.code == 0
 
+    with pytest.raises(SystemExit) as excinfo:
+        parser.parse_args(["setup-speed-roi", "--help"])
+    assert excinfo.value.code == 0
+
 
 @patch("traffik.cli.main.VideoPipeline")
 def test_cli_main_process_dispatch(mock_pipeline_cls, mock_summary):
@@ -105,11 +135,12 @@ def test_cli_main_process_dispatch(mock_pipeline_cls, mock_summary):
     mock_instance.run.return_value = mock_summary
     mock_pipeline_cls.return_value = mock_instance
 
-    main(["process", "input.mp4", "-o", "output.mp4", "--ocr"])
+    main(["process", "input.mp4", "-o", "output.mp4", "--ocr", "--speed"])
 
     mock_pipeline_cls.assert_called_once()
     passed_cfg = mock_pipeline_cls.call_args[0][0]
     assert passed_cfg.ocr.enabled is True
+    assert passed_cfg.speed.enabled is True
 
     mock_instance.run.assert_called_once_with(
         source_path="input.mp4",
@@ -139,7 +170,11 @@ def test_cli_main_stream_dispatch(mock_pipeline_cls, mock_summary):
     mock_instance.run.return_value = mock_summary
     mock_pipeline_cls.return_value = mock_instance
 
-    main(["stream", "input.mp4"])
+    main(["stream", "input.mp4", "--speed"])
+
+    mock_pipeline_cls.assert_called_once()
+    passed_cfg = mock_pipeline_cls.call_args[0][0]
+    assert passed_cfg.speed.enabled is True
 
     mock_instance.run.assert_called_once_with(
         source_path="input.mp4",
@@ -152,6 +187,34 @@ def test_cli_main_stream_dispatch(mock_pipeline_cls, mock_summary):
 def test_cli_main_setup_gate_dispatch(mock_run_setup_gate):
     main(["setup-gate", "clip_source.mp4"])
     mock_run_setup_gate.assert_called_once_with("clip_source.mp4")
+
+
+@patch("traffik.speed.calibration.run_setup_speed_roi")
+def test_cli_main_setup_speed_roi_dispatch(mock_run_setup_speed_roi):
+    main(["setup-speed-roi", "clip_source.mp4", "-w", "12.0", "-l", "40.0", "-u", "mph"])
+    mock_run_setup_speed_roi.assert_called_once_with(
+        "clip_source.mp4",
+        target_width=12.0,
+        target_length=40.0,
+        unit="mph",
+    )
+
+
+@patch("traffik.cli.main.VideoPipeline")
+def test_cli_banner_speed_output(mock_pipeline_cls, mock_summary, capsys):
+    mock_instance = MagicMock()
+    mock_instance.run.return_value = mock_summary
+    mock_pipeline_cls.return_value = mock_instance
+
+    # When speed is disabled
+    main(["process", "input.mp4", "--no-save"])
+    out, _ = capsys.readouterr()
+    assert "Speed Estimation: Disabled" in out
+
+    # When speed is enabled
+    main(["process", "input.mp4", "--speed", "--no-save"])
+    out, _ = capsys.readouterr()
+    assert "Speed Estimation: Enabled (unit=km/h" in out
 
 
 @patch("stream.VideoPipeline")
@@ -200,3 +263,32 @@ def test_main_wrapper(mock_exists, mock_pipeline_cls, mock_summary):
 def test_setup_line_wrapper(mock_run_setup_gate):
     setup_line_wrapper.main(["calibrate.mp4"])
     mock_run_setup_gate.assert_called_once_with("calibrate.mp4")
+
+
+@patch("traffik.utils.video_cutter.cut_video_segment")
+def test_cli_main_cut_clip_dispatch(mock_cut_video_segment):
+    main(["cut-clip", "source.mp4", "-s", "01:00", "-e", "02:30", "-o", "custom_clip.mp4", "--accurate"])
+    mock_cut_video_segment.assert_called_once_with(
+        source_video_path="source.mp4",
+        start="01:00",
+        end="02:30",
+        output_name="custom_clip.mp4",
+        output_dir=".",
+        clips_file="clips.txt",
+        accurate=True,
+    )
+
+
+@patch("cut_clip.cut_video_segment")
+def test_cut_clip_wrapper(mock_cut_video_segment):
+    import cut_clip
+    cut_clip.main(["source.mp4", "--start", "05:00", "--end", "06:30"])
+    mock_cut_video_segment.assert_called_once_with(
+        source_video_path="source.mp4",
+        start="05:00",
+        end="06:30",
+        output_name=None,
+        output_dir=".",
+        clips_file="clips.txt",
+        accurate=False,
+    )

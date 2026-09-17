@@ -16,6 +16,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 import cv2
+import numpy as np
 import supervision as sv
 from tqdm import tqdm
 
@@ -23,6 +24,7 @@ from traffik.config import Config
 from traffik.counting.gate import DualLineGate
 from traffik.detection.detector import VehicleDetector
 from traffik.ocr.plate_reader import PlateReader
+from traffik.speed.estimator import SpeedEstimator
 from traffik.tracking.tracker import VehicleTracker
 from traffik.visualization.hud import VisualAnnotator
 
@@ -69,7 +71,7 @@ def record_run_to_csv(
 
     with open(csv_path, mode="a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([file_name, run_number, in_count, out_count])
+        writer.writerow([file_name, run_number, in_count, out_count, ",,"])
 
     return run_number
 
@@ -137,6 +139,11 @@ class VideoPipeline:
             if config.ocr.enabled
             else None
         )
+        self.speed_estimator: Optional[SpeedEstimator] = (
+            SpeedEstimator(config.speed, fps=30.0)
+            if config.speed.enabled
+            else None
+        )
 
     def run(
         self,
@@ -164,6 +171,11 @@ class VideoPipeline:
         # Extract video metadata and calibrate tracker Kalman filter frame rate
         video_info = sv.VideoInfo.from_video_path(video_path=source_path)
         self.tracker = VehicleTracker(self.config.tracker, fps=video_info.fps)
+        self.speed_estimator = (
+            SpeedEstimator(self.config.speed, fps=video_info.fps)
+            if self.config.speed.enabled
+            else None
+        )
 
         # Initialize live stream window if requested
         window_name = f"Traffik Stream - {os.path.basename(source_path)}"
@@ -208,7 +220,13 @@ class VideoPipeline:
                 # 3. Virtual Gate State Machine & Directional Counting
                 self.gate.trigger(detections)
 
-                # 4. Optional License Plate OCR on Tracked Vehicle Crops
+                # 4. Perspective Speed Estimation & Tracking Velocity Smoothing
+                if self.speed_estimator is not None:
+                    speeds = self.speed_estimator.update(detections)
+                else:
+                    speeds = None
+
+                # 5. Optional License Plate OCR on Tracked Vehicle Crops
                 if (
                     self.plate_reader is not None
                     and detections.tracker_id is not None
@@ -237,17 +255,25 @@ class VideoPipeline:
                                 class_name=class_name,
                             )
 
-                # 5. Visual Annotation & Stream Display / Video Sink Output
+                # 6. Visual Annotation & Stream Display / Video Sink Output
                 if sink or stream:
                     labels = self.tracker.get_labels(
                         detections,
                         class_names=self.detector.model.names,
+                        speeds=speeds,
+                        speed_unit=self.config.speed.unit,
                     )
                     annotated_frame = self.annotator.annotate(
                         frame=frame,
                         detections=detections,
                         labels=labels,
                         gate=self.gate,
+                        speed_polygon=(
+                            np.array(self.config.speed.source_polygon,
+                                     dtype=np.int32)
+                            if self.config.speed.enabled
+                            else None
+                        ),
                     )
 
                     if sink is not None:
@@ -272,7 +298,8 @@ class VideoPipeline:
         run_number: Optional[int] = None
         if self.config.general.outputs_csv:
             is_pytest = "PYTEST_CURRENT_TEST" in os.environ
-            is_default_output = os.path.abspath(self.config.general.outputs_csv) == os.path.abspath("outputs.csv")
+            is_default_output = os.path.abspath(
+                self.config.general.outputs_csv) == os.path.abspath("outputs.csv")
             if not (is_pytest and is_default_output):
                 try:
                     run_number = record_run_to_csv(
@@ -283,7 +310,8 @@ class VideoPipeline:
                     )
                 except Exception as e:
                     print(
-                        f"[Traffik Pipeline] Warning: Could not write run metrics to '{self.config.general.outputs_csv}': {e}"
+                        f"[Traffik Pipeline] Warning: Could not write run metrics to '{
+                            self.config.general.outputs_csv}': {e}"
                     )
 
         return PipelineSummary(

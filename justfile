@@ -24,11 +24,11 @@ test-file path="tests/test_gate.py":
 # ==============================================================================
 
 # Process video headlessly at maximum speed
-process video="clips/clip_4.mp4" config="configs/default.toml":
+process video="clips/clip_11.mp4" config="configs/default.toml":
     uv run traffik process {{video}} -c {{config}}
 
 # Stream video playback with real-time OpenCV window
-stream video="clips/clip_4.mp4" config="configs/default.toml":
+stream video="clips/clip_11.mp4" config="configs/default.toml":
     uv run traffik stream {{video}} -c {{config}}
 
 # Process video with license plate OCR extraction enabled
@@ -38,6 +38,10 @@ ocr video="clips/clip_1.mp4" config="configs/default.toml":
 # Launch interactive 4-point virtual gate calibration tool
 setup-gate video="clips/clip_4.mp4":
     uv run traffik setup-gate {{video}}
+
+# Launch interactive 4-point speed calibration ROI tool
+setup-speed-roi video="clips/clip_4.mp4":
+    uv run traffik setup-speed-roi {{video}}
 
 # ==============================================================================
 # Maintenance & Environment
